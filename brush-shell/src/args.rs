@@ -204,6 +204,11 @@ pub struct CommandLineArgs {
     #[clap(long = "profile", value_name = "FILE", help_heading = HEADING_EXPERIMENTAL_OPTIONS)]
     pub profile: Option<PathBuf>,
 
+    /// Wrap coreutils with policy-checking wrappers (requires --profile).
+    #[cfg(feature = "policy")]
+    #[clap(long = "wrap-coreutils", requires = "profile", help_heading = HEADING_EXPERIMENTAL_OPTIONS)]
+    pub wrap_coreutils: bool,
+
     /// Path and arguments for script to execute (optional).
     #[clap(
         trailing_var_arg = true,

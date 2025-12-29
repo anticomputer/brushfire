@@ -8,3 +8,6 @@ pub mod entry;
 mod error_formatter;
 pub mod events;
 mod productinfo;
+
+#[cfg(feature = "policy")]
+pub mod wrappers;

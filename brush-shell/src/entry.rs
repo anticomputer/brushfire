@@ -156,6 +156,9 @@ async fn run_async(
     // Instantiate an appropriately configured shell and wrap it in an `Arc`. Note that we do
     // *not* run any code in the shell yet. We'll delay loading profiles and such until after
     // we've set up everything else (in `run_in_shell`).
+    #[cfg(feature = "policy")]
+    let (shell, _wrapper_cleanup) = instantiate_shell(&args, cli_args).await?;
+    #[cfg(not(feature = "policy"))]
     let shell = instantiate_shell(&args, cli_args).await?;
     let shell = Arc::new(Mutex::new(shell));
 
@@ -337,9 +340,12 @@ async fn initialize_shell(
 async fn instantiate_shell(
     args: &CommandLineArgs,
     cli_args: Vec<String>,
-) -> Result<brush_core::Shell, brush_interactive::ShellError> {
+) -> ShellResult {
     #[cfg(feature = "experimental-load")]
     if let Some(load_file) = &args.load_file {
+        #[cfg(feature = "policy")]
+        return Ok((instantiate_shell_from_file(load_file.as_path())?, None));
+        #[cfg(not(feature = "policy"))]
         return instantiate_shell_from_file(load_file.as_path());
     }
 
@@ -382,10 +388,15 @@ fn instantiate_shell_from_file(
 ///
 /// * `args` - The parsed command-line arguments.
 /// * `cli_args` - The raw command-line arguments.
+#[cfg(feature = "policy")]
+type ShellResult = Result<(brush_core::Shell, Option<crate::wrappers::WrapperCleanup>), brush_interactive::ShellError>;
+#[cfg(not(feature = "policy"))]
+type ShellResult = Result<brush_core::Shell, brush_interactive::ShellError>;
+
 async fn instantiate_shell_from_args(
     args: &CommandLineArgs,
     cli_args: Vec<String>,
-) -> Result<brush_core::Shell, brush_interactive::ShellError> {
+) -> ShellResult {
     // Compute login flag.
     let login = args.login || cli_args.first().is_some_and(|argv0| argv0.starts_with('-'));
 
@@ -479,15 +490,43 @@ async fn instantiate_shell_from_args(
                 format!("Failed to load policy profile '{}': {}", profile_path.display(), e),
             )
         })?;
-        let policy_engine = std::sync::Arc::new(brushfire_policy::PolicyEngine::new(policy));
+        let mut policy_engine = brushfire_policy::PolicyEngine::new(policy);
+
+        // Auto-blacklist real utilities if --wrap-coreutils is enabled
+        if args.wrap_coreutils {
+            crate::wrappers::auto_blacklist_utilities(&mut policy_engine).map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to auto-blacklist utilities: {}", e),
+                )
+            })?;
+        }
+
+        let policy_engine = std::sync::Arc::new(policy_engine);
         shell.maybe_policy_engine(Some(policy_engine))
     } else {
         shell.maybe_policy_engine(None)
     };
 
     // Build the shell.
-    let shell = shell.build().await?;
+    let mut shell = shell.build().await?;
 
+    // Set up wrapper environment if --wrap-coreutils is enabled
+    #[cfg(feature = "policy")]
+    let wrapper_cleanup = if args.wrap_coreutils {
+        if let Some(ref profile_path) = args.profile {
+            Some(crate::wrappers::setup_coreutils_wrappers(profile_path, &mut shell)?)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    #[cfg(feature = "policy")]
+    return Ok((shell, wrapper_cleanup));
+
+    #[cfg(not(feature = "policy"))]
     Ok(shell)
 }
 
