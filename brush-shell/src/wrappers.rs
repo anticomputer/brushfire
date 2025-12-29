@@ -109,7 +109,8 @@ fn resolve_real_utility_paths(shell: &Shell) -> Result<Vec<(String, PathBuf)>, s
 /// 2. Creates a temporary directory
 /// 3. Copies wrapper binaries to the temp directory
 /// 4. Sets BRUSHFIRE_POLICY and BRUSHFIRE_*_PATH environment variables
-/// 5. Prepends temp directory to PATH in both process and shell environments
+/// 5. Optionally sets BRUSHFIRE_WEBHOOK_URL and BRUSHFIRE_SESSION_ID for webhook reporting
+/// 6. Prepends temp directory to PATH in both process and shell environments
 ///
 /// Note: Auto-blacklisting should be done separately before creating the shell.
 ///
@@ -117,6 +118,8 @@ fn resolve_real_utility_paths(shell: &Shell) -> Result<Vec<(String, PathBuf)>, s
 ///
 /// * `profile_path` - Path to the policy profile file
 /// * `shell` - Mutable reference to the shell to update its PATH
+/// * `webhook_url` - Optional webhook URL for policy event reporting
+/// * `session_id` - Optional session ID for correlating webhook events
 ///
 /// # Returns
 ///
@@ -130,6 +133,8 @@ fn resolve_real_utility_paths(shell: &Shell) -> Result<Vec<(String, PathBuf)>, s
 pub fn setup_coreutils_wrappers(
     profile_path: &Path,
     shell: &mut Shell,
+    webhook_url: Option<&String>,
+    session_id: Option<&String>,
 ) -> Result<WrapperCleanup, std::io::Error> {
     // 1. Resolve real utility paths BEFORE modifying PATH
     let real_paths = resolve_real_utility_paths(shell)?;
@@ -166,6 +171,55 @@ pub fn setup_coreutils_wrappers(
                 format!("Failed to set BRUSHFIRE_POLICY: {}", e),
             )
         })?;
+
+    // Set BRUSHFIRE_WEBHOOK_URL and BRUSHFIRE_SESSION_ID if provided
+    if let Some(url) = webhook_url {
+        unsafe {
+            env::set_var("BRUSHFIRE_WEBHOOK_URL", url);
+        }
+        shell
+            .env
+            .update_or_add(
+                "BRUSHFIRE_WEBHOOK_URL",
+                ShellValueLiteral::Scalar(url.clone()),
+                |var| {
+                    var.export();
+                    Ok(())
+                },
+                EnvironmentLookup::Anywhere,
+                EnvironmentScope::Global,
+            )
+            .map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to set BRUSHFIRE_WEBHOOK_URL: {}", e),
+                )
+            })?;
+    }
+
+    if let Some(id) = session_id {
+        unsafe {
+            env::set_var("BRUSHFIRE_SESSION_ID", id);
+        }
+        shell
+            .env
+            .update_or_add(
+                "BRUSHFIRE_SESSION_ID",
+                ShellValueLiteral::Scalar(id.clone()),
+                |var| {
+                    var.export();
+                    Ok(())
+                },
+                EnvironmentLookup::Anywhere,
+                EnvironmentScope::Global,
+            )
+            .map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to set BRUSHFIRE_SESSION_ID: {}", e),
+                )
+            })?;
+    }
 
     // 5. Set BRUSHFIRE_*_PATH environment variables for each resolved utility
     // This allows wrappers to call the correct version of the real utility

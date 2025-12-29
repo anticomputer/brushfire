@@ -502,6 +502,17 @@ async fn instantiate_shell_from_args(
             })?;
         }
 
+        // Set up webhook reporter if URL provided and store session ID for wrappers
+        #[cfg(feature = "policy-webhook")]
+        if let Some(ref webhook_url) = args.policy_webhook {
+            let session_id = uuid::Uuid::new_v4().to_string();
+            let reporter = brushfire_policy::WebhookReporter::new(
+                webhook_url.clone(),
+                session_id,
+            );
+            policy_engine.set_reporter(std::sync::Arc::new(reporter));
+        }
+
         let policy_engine = std::sync::Arc::new(policy_engine);
         shell.maybe_policy_engine(Some(policy_engine))
     } else {
@@ -515,7 +526,25 @@ async fn instantiate_shell_from_args(
     #[cfg(feature = "policy")]
     let wrapper_cleanup = if args.wrap_coreutils {
         if let Some(ref profile_path) = args.profile {
-            Some(crate::wrappers::setup_coreutils_wrappers(profile_path, &mut shell)?)
+            // Get webhook info from args if available
+            #[cfg(feature = "policy-webhook")]
+            let (webhook_url, session_id) = if let Some(ref url) = args.policy_webhook {
+                // Generate a new session ID for wrappers
+                let id = uuid::Uuid::new_v4().to_string();
+                (Some(url), Some(id))
+            } else {
+                (None, None)
+            };
+
+            #[cfg(not(feature = "policy-webhook"))]
+            let (webhook_url, session_id) = (None::<&String>, None::<String>);
+
+            Some(crate::wrappers::setup_coreutils_wrappers(
+                profile_path,
+                &mut shell,
+                webhook_url,
+                session_id.as_ref(),
+            )?)
         } else {
             None
         }

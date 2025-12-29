@@ -49,7 +49,20 @@ pub fn get_policy_engine() -> Result<&'static PolicyEngine, PolicyError> {
         let mut parser = ProfileParser::new();
         let policy = parser.parse_file(Path::new(&profile_path))?;
 
-        // Create and return the policy engine
-        Ok(PolicyEngine::new(policy))
+        // Create policy engine
+        let mut engine = PolicyEngine::new(policy);
+
+        // Configure webhook reporter if URL is provided
+        #[cfg(feature = "webhook")]
+        if let Ok(webhook_url) = std::env::var("BRUSHFIRE_WEBHOOK_URL") {
+            // Get session ID from environment (set by shell)
+            let session_id = std::env::var("BRUSHFIRE_SESSION_ID")
+                .unwrap_or_else(|_| uuid::Uuid::new_v4().to_string());
+
+            let reporter = brushfire_policy::WebhookReporter::new(webhook_url, session_id);
+            engine.set_reporter(std::sync::Arc::new(reporter));
+        }
+
+        Ok(engine)
     })
 }

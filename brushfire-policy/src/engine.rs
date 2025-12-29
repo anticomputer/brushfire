@@ -5,12 +5,18 @@ use crate::rules::{
     FileAccessMode, FilesystemRule, Policy, RuleAction,
 };
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+#[cfg(feature = "webhook")]
+use crate::reporter::{CheckResult, PolicyEvent, PolicyReporter};
 
 /// Policy enforcement engine.
-#[derive(Debug, Clone)]
 pub struct PolicyEngine {
     policy: Policy,
     default_policy: DefaultPolicy,
+
+    #[cfg(feature = "webhook")]
+    reporter: Option<Arc<dyn PolicyReporter>>,
 }
 
 /// Default policy mode for filesystem access.
@@ -41,7 +47,30 @@ impl PolicyEngine {
         Self {
             policy,
             default_policy,
+            #[cfg(feature = "webhook")]
+            reporter: None,
         }
+    }
+
+    /// Set the policy reporter for observability.
+    ///
+    /// # Arguments
+    ///
+    /// * `reporter` - The reporter to use for policy events
+    #[cfg(feature = "webhook")]
+    pub fn with_reporter(mut self, reporter: Arc<dyn PolicyReporter>) -> Self {
+        self.reporter = Some(reporter);
+        self
+    }
+
+    /// Set the policy reporter for observability (mutable version).
+    ///
+    /// # Arguments
+    ///
+    /// * `reporter` - The reporter to use for policy events
+    #[cfg(feature = "webhook")]
+    pub fn set_reporter(&mut self, reporter: Arc<dyn PolicyReporter>) {
+        self.reporter = Some(reporter);
     }
 
     /// Check if a file operation is allowed.
@@ -64,6 +93,17 @@ impl PolicyEngine {
             } = rule
             {
                 if self.path_matches(&canonical_path, rule_path, *recursive) {
+                    #[cfg(feature = "webhook")]
+                    if let Some(ref reporter) = self.reporter {
+                        let event = PolicyEvent::file_access_check(
+                            canonical_path.clone(),
+                            mode,
+                            CheckResult::Denied,
+                            "file_blacklisted".to_string(),
+                        );
+                        reporter.report(&event);
+                    }
+
                     return Err(PolicyViolation::FileBlacklisted(
                         canonical_path.display().to_string(),
                     ));
@@ -120,10 +160,33 @@ impl PolicyEngine {
             });
 
             if !allowed {
+                #[cfg(feature = "webhook")]
+                if let Some(ref reporter) = self.reporter {
+                    let event = PolicyEvent::file_access_check(
+                        canonical_path.clone(),
+                        mode,
+                        CheckResult::Denied,
+                        "file_not_whitelisted".to_string(),
+                    );
+                    reporter.report(&event);
+                }
+
                 return Err(PolicyViolation::FileNotWhitelisted(
                     canonical_path.display().to_string(),
                 ));
             }
+        }
+
+        // Report allowed access
+        #[cfg(feature = "webhook")]
+        if let Some(ref reporter) = self.reporter {
+            let event = PolicyEvent::file_access_check(
+                canonical_path,
+                mode,
+                CheckResult::Allowed,
+                "policy_check_passed".to_string(),
+            );
+            reporter.report(&event);
         }
 
         Ok(())
@@ -141,13 +204,46 @@ impl PolicyEngine {
             if self.command_matches(&canonical_path, &rule.pattern) {
                 match rule.action {
                     RuleAction::Deny => {
+                        #[cfg(feature = "webhook")]
+                        if let Some(ref reporter) = self.reporter {
+                            let event = PolicyEvent::command_spawn_check(
+                                canonical_path.clone(),
+                                CheckResult::Denied,
+                                "command_blacklisted".to_string(),
+                            );
+                            reporter.report(&event);
+                        }
+
                         return Err(PolicyViolation::CommandBlocked(
                             canonical_path.display().to_string(),
                         ));
                     }
-                    RuleAction::Allow => return Ok(()),
+                    RuleAction::Allow => {
+                        #[cfg(feature = "webhook")]
+                        if let Some(ref reporter) = self.reporter {
+                            let event = PolicyEvent::command_spawn_check(
+                                canonical_path.clone(),
+                                CheckResult::Allowed,
+                                "command_explicitly_allowed".to_string(),
+                            );
+                            reporter.report(&event);
+                        }
+
+                        return Ok(());
+                    }
                 }
             }
+        }
+
+        // Report allowed spawn (no matching rules)
+        #[cfg(feature = "webhook")]
+        if let Some(ref reporter) = self.reporter {
+            let event = PolicyEvent::command_spawn_check(
+                canonical_path,
+                CheckResult::Allowed,
+                "no_matching_rules".to_string(),
+            );
+            reporter.report(&event);
         }
 
         Ok(())

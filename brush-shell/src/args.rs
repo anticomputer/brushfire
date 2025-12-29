@@ -209,6 +209,11 @@ pub struct CommandLineArgs {
     #[clap(long = "wrap-coreutils", requires = "profile", help_heading = HEADING_EXPERIMENTAL_OPTIONS)]
     pub wrap_coreutils: bool,
 
+    /// Webhook URL for policy event reporting (requires --profile).
+    #[cfg(feature = "policy-webhook")]
+    #[clap(long = "policy-webhook", requires = "profile", env = "BRUSHFIRE_WEBHOOK_URL", help_heading = HEADING_EXPERIMENTAL_OPTIONS)]
+    pub policy_webhook: Option<String>,
+
     /// Path and arguments for script to execute (optional).
     #[clap(
         trailing_var_arg = true,

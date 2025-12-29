@@ -30,6 +30,9 @@ pub mod macros;
 pub mod parser;
 pub mod rules;
 
+#[cfg(feature = "webhook")]
+pub mod reporter;
+
 // Re-export main types for convenience
 pub use engine::{DefaultPolicy, PolicyEngine};
 pub use error::{ParseError, PolicyViolation};
@@ -37,4 +40,9 @@ pub use macros::MacroExpander;
 pub use parser::ProfileParser;
 pub use rules::{
     CommandRule, FileAccessMode, FilesystemRule, Policy, RuleAction,
+};
+
+#[cfg(feature = "webhook")]
+pub use reporter::{
+    ActionContext, CheckResult, EventType, PolicyEvent, PolicyReporter, WebhookReporter,
 };
