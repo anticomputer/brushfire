@@ -18,12 +18,19 @@ Brushfire adds shell-level policies controlling:
 - [SECURITY.md](SECURITY.md) - Security model, threat model, and limitations
 - [USAGE.md](USAGE.md) - Profile syntax and examples
 
+## Building
+
+```bash
+# Standard build with policy support
+cargo build --features policy
+
+# Build with webhook observability (automatically enables policy)
+cargo build --features policy-webhook
+```
+
 ## Quick Start
 
 ```bash
-# Build with policy support
-cargo build --features policy
-
 # Run with a policy profile
 brush --profile my.profile -c 'commands here'
 
