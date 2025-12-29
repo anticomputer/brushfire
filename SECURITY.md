@@ -64,27 +64,6 @@ error: Policy violation: File access denied
 
 Once the shell spawns a child process, that process runs with normal OS permissions. Brushfire has no visibility into or control over what spawned processes do.
 
-```
-┌─────────────────────────────────────────┐
-│ brush (brushfire enforced)              │
-│                                         │
-│  ✓ Can spawn /bin/cat? → Check policy  │
-│  ✓ Redirect > file? → Check policy     │
-│  ✓ cd directory? → Check policy         │
-│                                         │
-│  Spawns: /bin/cat /etc/passwd           │
-└─────────────┬───────────────────────────┘
-              │
-              ▼
-┌─────────────────────────────────────────┐
-│ /bin/cat (NOT brushfire enforced)       │
-│                                         │
-│  Opens /etc/passwd directly via OS      │
-│  Reads file with normal permissions     │
-│  Brushfire cannot see or control this   │
-└─────────────────────────────────────────┘
-```
-
 Programs can make direct system calls and library functions that brushfire cannot intercept:
 - `open()`, `read()`, `write()` syscalls
 - `fopen()`, `fread()`, `fwrite()` libc functions
