@@ -15,6 +15,19 @@ $ brush --profile restricted.profile -c "curl example.com"
 error: Policy violation: Command execution denied
 ```
 
+Using `whitelist_exec` triggers default-deny mode for all commands:
+
+```bash
+# Profile: whitelist_exec /usr/bin/ls
+
+$ brush --profile restricted.profile -c "ls"
+# Allowed - matches whitelist
+
+$ brush --profile restricted.profile -c "curl example.com"
+error: Policy violation: Command execution denied
+# Denied - not in whitelist, default deny
+```
+
 **Limitation**: Once a command is allowed to spawn, it can spawn other programs:
 
 ```bash
