@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// A complete policy loaded from one or more firejail profiles.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct Policy {
     /// Filesystem access rules.
     pub filesystem_rules: Vec<FilesystemRule>,
@@ -12,6 +12,20 @@ pub struct Policy {
     pub command_rules: Vec<CommandRule>,
     /// Macro definitions for variable expansion.
     pub macros: HashMap<String, String>,
+    /// Whether to enable safe /dev defaults in restrictive mode.
+    /// When true (default), common /dev files are auto-whitelisted in default-deny mode.
+    pub enable_safe_dev_defaults: bool,
+}
+
+impl Default for Policy {
+    fn default() -> Self {
+        Self {
+            filesystem_rules: Vec::new(),
+            command_rules: Vec::new(),
+            macros: HashMap::new(),
+            enable_safe_dev_defaults: true,
+        }
+    }
 }
 
 /// Filesystem access control rules.

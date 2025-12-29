@@ -34,7 +34,7 @@ pub enum DefaultPolicy {
 impl PolicyEngine {
     /// Create a new policy engine with the given policy.
     #[must_use]
-    pub fn new(policy: Policy) -> Self {
+    pub fn new(mut policy: Policy) -> Self {
         // If there are any whitelist rules, switch to restrictive mode for filesystem
         let has_whitelist = policy
             .filesystem_rules
@@ -59,12 +59,44 @@ impl PolicyEngine {
             DefaultPolicy::AllowAll
         };
 
+        // Add safe /dev defaults if in restrictive mode and enabled
+        if default_policy == DefaultPolicy::DenyAll && policy.enable_safe_dev_defaults {
+            Self::add_safe_dev_defaults(&mut policy);
+        }
+
         Self {
             policy,
             default_policy,
             default_command_policy,
             #[cfg(feature = "webhook")]
             reporter: None,
+        }
+    }
+
+    /// Add safe /dev device files to whitelist.
+    ///
+    /// Common device files that are generally safe to access:
+    /// - /dev/null, /dev/zero - null devices
+    /// - /dev/urandom, /dev/random - entropy sources
+    /// - /dev/stdin, /dev/stdout, /dev/stderr - standard streams
+    /// - /dev/tty - controlling terminal
+    fn add_safe_dev_defaults(policy: &mut Policy) {
+        const SAFE_DEV_FILES: &[&str] = &[
+            "/dev/null",
+            "/dev/zero",
+            "/dev/urandom",
+            "/dev/random",
+            "/dev/stdin",
+            "/dev/stdout",
+            "/dev/stderr",
+            "/dev/tty",
+        ];
+
+        for dev_file in SAFE_DEV_FILES {
+            policy.add_filesystem_rule(FilesystemRule::Whitelist {
+                path: PathBuf::from(dev_file),
+                recursive: false,
+            });
         }
     }
 

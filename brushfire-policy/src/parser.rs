@@ -107,6 +107,10 @@ impl ProfileParser {
                 let path = self.parse_path(&parts[1..])?;
                 Ok(Some(Directive::WhitelistExec(path)))
             }
+            "no-safe-dev-defaults" => {
+                // Disable automatic whitelisting of safe /dev files
+                Ok(Some(Directive::NoSafeDevDefaults))
+            }
             "read-only" => {
                 let path = self.parse_path(&parts[1..])?;
                 Ok(Some(Directive::ReadOnly(path)))
@@ -231,6 +235,10 @@ impl ProfileParser {
                     }
                 }
             }
+            Directive::NoSafeDevDefaults => {
+                // Disable automatic whitelisting of safe /dev files
+                policy.enable_safe_dev_defaults = false;
+            }
             Directive::ReadOnly(path) => {
                 policy.add_filesystem_rule(FilesystemRule::ReadOnly {
                     path,
@@ -267,6 +275,7 @@ enum Directive {
     Blacklist(PathBuf),
     NoBlacklist(PathBuf),
     WhitelistExec(PathBuf),
+    NoSafeDevDefaults,
     ReadOnly(PathBuf),
     NoExec(PathBuf),
     Include(Policy),

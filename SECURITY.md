@@ -465,3 +465,44 @@ Do not use brushfire as:
 - Replacement for OS security
 - Trusted computing base
 - Defense against adversarial exploitation
+
+## Safe `/dev/` Defaults
+
+When `whitelist` directives enable default-deny filesystem mode, brushfire automatically whitelists these device files:
+
+- `/dev/null`
+- `/dev/zero`
+- `/dev/urandom`
+- `/dev/random`
+- `/dev/stdin`
+- `/dev/stdout`
+- `/dev/stderr`
+- `/dev/tty`
+
+To disable automatic whitelisting:
+
+```bash
+no-safe-dev-defaults
+
+whitelist /your/allowed/path
+```
+
+Without safe defaults, shell redirections to `/dev/null` and similar operations will fail with policy violations.
+
+## Glob Expansion Information Disclosure
+
+Shell glob patterns reveal directory structure in default-deny mode:
+
+```bash
+$ echo /etc/*
+/etc/hosts /etc/passwd /etc/group ...
+```
+
+File contents remain protected:
+
+```bash
+$ cat /etc/passwd
+Policy violation: File access denied (not whitelisted)
+```
+
+This occurs because shells expand globs before brushfire intercepts file operations. Cannot be prevented without breaking shell functionality.
