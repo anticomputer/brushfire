@@ -187,13 +187,19 @@ whitelist /dev/stderr
 ## Running with Profiles
 
 ```bash
+# Build with policy support
+cargo build --features policy
+
+# Build with webhook support (automatically enables policy)
+cargo build --features policy-webhook
+
 # Basic usage
 brush --profile my.profile -c 'commands here'
 
 # With coreutils wrappers
 brush --profile my.profile --wrap-coreutils -c 'cat file.txt'
 
-# With webhook observability
+# With webhook observability (requires policy-webhook feature)
 brush --profile my.profile --policy-webhook http://localhost:8080 -c 'commands'
 
 # Combined
