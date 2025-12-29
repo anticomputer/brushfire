@@ -27,7 +27,7 @@ cargo build --features policy
 # Run with a policy profile
 brush --profile my.profile -c 'commands here'
 
-# With coreutils wrappers for extended enforcement
+# With coreutils wrappers for first-chance file access enforcement and observability
 brush --profile my.profile --wrap-coreutils -c 'cat /etc/passwd'
 ```
 
@@ -40,9 +40,7 @@ whitelist_exec /tmp/safe-bin/*
 # Only allow file access to workspace
 whitelist /home/user/workspace
 
-# Block sensitive files
-blacklist /etc/shadow
-blacklist /root/.ssh
+# Default deny all other access
 ```
 
 ## About Brush
