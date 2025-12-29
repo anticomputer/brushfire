@@ -81,6 +81,19 @@ impl builtins::Command for CdCommand {
             target_dir = context.shell.absolute_path(target_dir).canonicalize()?;
         }
 
+        // NEW: Policy check before changing directory
+        #[cfg(feature = "policy")]
+        if let Some(ref policy) = context.shell.policy {
+            policy
+                .check_file_access(&target_dir, brushfire_policy::FileAccessMode::Read)
+                .map_err(|e| {
+                    error::Error::from(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        format!("Policy violation: {e}"),
+                    ))
+                })?;
+        }
+
         context.shell.set_working_dir(&target_dir)?;
 
         // Bash compatibility

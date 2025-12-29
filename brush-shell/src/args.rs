@@ -199,6 +199,11 @@ pub struct CommandLineArgs {
     )]
     pub disabled_events: Vec<events::TraceEvent>,
 
+    /// Path to firejail profile for policy enforcement (**brushfire feature**).
+    #[cfg(feature = "policy")]
+    #[clap(long = "profile", value_name = "FILE", help_heading = HEADING_EXPERIMENTAL_OPTIONS)]
+    pub profile: Option<PathBuf>,
+
     /// Path and arguments for script to execute (optional).
     #[clap(
         trailing_var_arg = true,

@@ -609,6 +609,40 @@ pub(crate) fn execute_external_command(
             .join(" ")
     );
 
+    // NEW: Policy check before spawning process
+    #[cfg(feature = "policy")]
+    if let Some(ref policy) = context.shell.policy {
+        use std::path::Path;
+
+        let executable_path = Path::new(executable_path);
+
+        // Check if command execution is blocked
+        policy.check_process_spawn(executable_path).map_err(|e| {
+            error::Error::from(error::ErrorKind::FailedToExecuteCommand(
+                context.command_name.clone(),
+                std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!("Policy violation: {e}"),
+                ),
+            ))
+        })?;
+
+        // Check if execution is allowed from the parent directory (noexec check)
+        if let Some(parent_dir) = executable_path.parent() {
+            policy
+                .check_file_access(parent_dir, brushfire_policy::FileAccessMode::Execute)
+                .map_err(|e| {
+                    error::Error::from(error::ErrorKind::FailedToExecuteCommand(
+                        context.command_name.clone(),
+                        std::io::Error::new(
+                            std::io::ErrorKind::PermissionDenied,
+                            format!("Policy violation: {e}"),
+                        ),
+                    ))
+                })?;
+        }
+    }
+
     match sys::process::spawn(cmd) {
         Ok(child) => {
             // Retrieve the pid.

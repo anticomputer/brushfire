@@ -124,11 +124,14 @@ default = [
 'builtin.unset' = []
 'builtin.wait' = []
 
+policy = ["brush-core/policy", "dep:brushfire-policy"]
+
 [lints]
 workspace = true
 
 [dependencies]
 brush-core = { version = "^0.4.0", path = "../brush-core" }
+brushfire-policy = { version = "0.1.0", path = "../brushfire-policy", optional = true }
 brush-parser = { version = "^0.3.0", path = "../brush-parser" }
 cfg-if = "1.0.4"
 chrono = "0.4.42"

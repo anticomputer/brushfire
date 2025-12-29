@@ -1,0 +1,338 @@
+//! Policy enforcement engine.
+
+use crate::error::PolicyViolation;
+use crate::rules::{
+    FileAccessMode, FilesystemRule, Policy, RuleAction,
+};
+use std::path::{Path, PathBuf};
+
+/// Policy enforcement engine.
+#[derive(Debug, Clone)]
+pub struct PolicyEngine {
+    policy: Policy,
+    default_policy: DefaultPolicy,
+}
+
+/// Default policy mode for filesystem access.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DefaultPolicy {
+    /// Allow all access by default (permissive mode).
+    AllowAll,
+    /// Deny all access by default (restrictive mode, enabled by first whitelist).
+    DenyAll,
+}
+
+impl PolicyEngine {
+    /// Create a new policy engine with the given policy.
+    #[must_use]
+    pub fn new(policy: Policy) -> Self {
+        // If there are any whitelist rules, switch to restrictive mode
+        let has_whitelist = policy
+            .filesystem_rules
+            .iter()
+            .any(|rule| matches!(rule, FilesystemRule::Whitelist { .. }));
+
+        let default_policy = if has_whitelist {
+            DefaultPolicy::DenyAll
+        } else {
+            DefaultPolicy::AllowAll
+        };
+
+        Self {
+            policy,
+            default_policy,
+        }
+    }
+
+    /// Check if a file operation is allowed.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`PolicyViolation`] if the operation is denied by policy.
+    pub fn check_file_access(
+        &self,
+        path: &Path,
+        mode: FileAccessMode,
+    ) -> Result<(), PolicyViolation> {
+        let canonical_path = self.canonicalize_path(path)?;
+
+        // Check blacklist first (deny takes precedence)
+        for rule in &self.policy.filesystem_rules {
+            if let FilesystemRule::Blacklist {
+                path: rule_path,
+                recursive,
+            } = rule
+            {
+                if self.path_matches(&canonical_path, rule_path, *recursive) {
+                    return Err(PolicyViolation::FileBlacklisted(
+                        canonical_path.display().to_string(),
+                    ));
+                }
+            }
+        }
+
+        // Check read-only rules for write operations
+        if mode == FileAccessMode::Write {
+            for rule in &self.policy.filesystem_rules {
+                if let FilesystemRule::ReadOnly {
+                    path: rule_path,
+                    recursive,
+                } = rule
+                {
+                    if self.path_matches(&canonical_path, rule_path, *recursive) {
+                        return Err(PolicyViolation::FileReadOnly(
+                            canonical_path.display().to_string(),
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Check noexec rules for execute operations
+        if mode == FileAccessMode::Execute {
+            for rule in &self.policy.filesystem_rules {
+                if let FilesystemRule::NoExec {
+                    path: rule_path,
+                    recursive,
+                } = rule
+                {
+                    if self.path_matches(&canonical_path, rule_path, *recursive) {
+                        return Err(PolicyViolation::NoExec(
+                            canonical_path.display().to_string(),
+                        ));
+                    }
+                }
+            }
+        }
+
+        // Check whitelist in restrictive mode
+        if self.default_policy == DefaultPolicy::DenyAll {
+            let allowed = self.policy.filesystem_rules.iter().any(|rule| {
+                if let FilesystemRule::Whitelist {
+                    path: rule_path,
+                    recursive,
+                } = rule
+                {
+                    self.path_matches(&canonical_path, rule_path, *recursive)
+                } else {
+                    false
+                }
+            });
+
+            if !allowed {
+                return Err(PolicyViolation::FileNotWhitelisted(
+                    canonical_path.display().to_string(),
+                ));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Check if a process spawn is allowed.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`PolicyViolation`] if the command is blocked by policy.
+    pub fn check_process_spawn(&self, command_path: &Path) -> Result<(), PolicyViolation> {
+        let canonical_path = self.canonicalize_path(command_path)?;
+
+        for rule in &self.policy.command_rules {
+            if self.command_matches(&canonical_path, &rule.pattern) {
+                match rule.action {
+                    RuleAction::Deny => {
+                        return Err(PolicyViolation::CommandBlocked(
+                            canonical_path.display().to_string(),
+                        ));
+                    }
+                    RuleAction::Allow => return Ok(()),
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Canonicalize a path, handling non-existent paths gracefully.
+    fn canonicalize_path(&self, path: &Path) -> Result<PathBuf, PolicyViolation> {
+        // First try direct canonicalization
+        if let Ok(canonical) = path.canonicalize() {
+            return Ok(canonical);
+        }
+
+        // If that fails, try to canonicalize the parent and append the filename
+        if let Some(parent) = path.parent() {
+            if let Ok(canonical_parent) = parent.canonicalize() {
+                if let Some(filename) = path.file_name() {
+                    return Ok(canonical_parent.join(filename));
+                }
+            }
+        }
+
+        // Last resort: try to make it absolute at least
+        if path.is_absolute() {
+            Ok(path.to_path_buf())
+        } else {
+            std::env::current_dir()
+                .map(|cwd| cwd.join(path))
+                .or_else(|_| Ok(path.to_path_buf()))
+        }
+    }
+
+    /// Check if a test path matches a rule path.
+    fn path_matches(&self, test_path: &Path, rule_path: &Path, recursive: bool) -> bool {
+        // Canonicalize the rule path for comparison
+        let canonical_rule = self.canonicalize_path(rule_path).ok();
+
+        if let Some(ref canonical_rule) = canonical_rule {
+            if recursive {
+                test_path.starts_with(canonical_rule)
+            } else {
+                test_path == canonical_rule
+            }
+        } else {
+            // Fallback to direct comparison if canonicalization fails
+            if recursive {
+                test_path.starts_with(rule_path)
+            } else {
+                test_path == rule_path
+            }
+        }
+    }
+
+    /// Check if a command path matches a glob pattern.
+    fn command_matches(&self, command_path: &Path, pattern: &str) -> bool {
+        glob::Pattern::new(pattern)
+            .ok()
+            .and_then(|p| Some(p.matches_path(command_path)))
+            .unwrap_or(false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rules::{CommandRule, FilesystemRule};
+
+    #[test]
+    fn test_blacklist_enforcement() {
+        let mut policy = Policy::new();
+        policy.add_filesystem_rule(FilesystemRule::Blacklist {
+            path: PathBuf::from("/etc/shadow"),
+            recursive: false,
+        });
+
+        let engine = PolicyEngine::new(policy);
+
+        // Should block access to blacklisted file
+        assert!(engine
+            .check_file_access(&PathBuf::from("/etc/shadow"), FileAccessMode::Read)
+            .is_err());
+
+        // Should allow access to non-blacklisted file
+        assert!(engine
+            .check_file_access(&PathBuf::from("/etc/hosts"), FileAccessMode::Read)
+            .is_ok());
+    }
+
+    #[test]
+    fn test_readonly_enforcement() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let readonly_dir = temp_dir.path().join("readonly");
+        fs::create_dir(&readonly_dir).unwrap();
+
+        let mut policy = Policy::new();
+        policy.add_filesystem_rule(FilesystemRule::ReadOnly {
+            path: readonly_dir.clone(),
+            recursive: true,
+        });
+
+        let engine = PolicyEngine::new(policy);
+        let test_file = readonly_dir.join("file");
+
+        // Should allow reads
+        assert!(engine
+            .check_file_access(&test_file, FileAccessMode::Read)
+            .is_ok());
+
+        // Should block writes
+        assert!(engine
+            .check_file_access(&test_file, FileAccessMode::Write)
+            .is_err());
+    }
+
+    #[test]
+    fn test_noexec_enforcement() {
+        let mut policy = Policy::new();
+        policy.add_filesystem_rule(FilesystemRule::NoExec {
+            path: PathBuf::from("/tmp"),
+            recursive: true,
+        });
+
+        let engine = PolicyEngine::new(policy);
+
+        // Should block execution
+        assert!(engine
+            .check_file_access(&PathBuf::from("/tmp/script.sh"), FileAccessMode::Execute)
+            .is_err());
+
+        // Should allow read/write
+        assert!(engine
+            .check_file_access(&PathBuf::from("/tmp/file.txt"), FileAccessMode::Read)
+            .is_ok());
+    }
+
+    #[test]
+    fn test_command_blocking() {
+        let mut policy = Policy::new();
+        policy.add_command_rule(CommandRule {
+            pattern: "/usr/bin/curl".to_string(),
+            action: RuleAction::Deny,
+        });
+
+        let engine = PolicyEngine::new(policy);
+
+        // Should block curl (if it exists)
+        if PathBuf::from("/usr/bin/curl").exists() {
+            assert!(engine
+                .check_process_spawn(&PathBuf::from("/usr/bin/curl"))
+                .is_err());
+        }
+    }
+
+    #[test]
+    fn test_whitelist_restrictive_mode() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let allowed_dir = temp_dir.path().join("allowed");
+        let other_dir = temp_dir.path().join("other");
+        fs::create_dir(&allowed_dir).unwrap();
+        fs::create_dir(&other_dir).unwrap();
+
+        let mut policy = Policy::new();
+        policy.add_filesystem_rule(FilesystemRule::Whitelist {
+            path: allowed_dir.clone(),
+            recursive: true,
+        });
+
+        let engine = PolicyEngine::new(policy);
+
+        // Should be in restrictive mode
+        assert_eq!(engine.default_policy, DefaultPolicy::DenyAll);
+
+        // Should allow whitelisted paths
+        assert!(engine
+            .check_file_access(&allowed_dir.join("file"), FileAccessMode::Read)
+            .is_ok());
+
+        // Should block non-whitelisted paths
+        assert!(engine
+            .check_file_access(&other_dir.join("file"), FileAccessMode::Read)
+            .is_err());
+    }
+}

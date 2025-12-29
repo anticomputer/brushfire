@@ -1,0 +1,23 @@
+[package]
+name = "brushfire-policy"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+categories.workspace = true
+keywords.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Policy engine for brushfire - firejail-style ACL enforcement for brush shell"
+
+[dependencies]
+glob = "0.3"
+thiserror = "1.0"
+anyhow = "1.0"
+
+[dev-dependencies]
+tempfile = "3.8"
+
+[lints]
+workspace = true

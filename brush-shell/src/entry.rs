@@ -469,6 +469,22 @@ async fn instantiate_shell_from_args(
     #[cfg(feature = "experimental-builtins")]
     let shell = shell.experimental_builtins();
 
+    // Load policy if profile is specified (brushfire feature).
+    #[cfg(feature = "policy")]
+    let shell = if let Some(ref profile_path) = args.profile {
+        let mut parser = brushfire_policy::ProfileParser::new();
+        let policy = parser.parse_file(profile_path).map_err(|e| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("Failed to load policy profile '{}': {}", profile_path.display(), e),
+            )
+        })?;
+        let policy_engine = std::sync::Arc::new(brushfire_policy::PolicyEngine::new(policy));
+        shell.maybe_policy_engine(Some(policy_engine))
+    } else {
+        shell.maybe_policy_engine(None)
+    };
+
     // Build the shell.
     let shell = shell.build().await?;
 

@@ -19,11 +19,13 @@ workspace = true
 [features]
 default = []
 serde = ["dep:serde", "brush-parser/serde", "rpds/serde", "chrono/serde"]
+policy = ["dep:brushfire-policy"]
 
 [dependencies]
 async-recursion = "1.1.1"
 async-trait = "0.1.89"
 brush-parser = { version = "^0.3.0", path = "../brush-parser" }
+brushfire-policy = { version = "0.1.0", path = "../brushfire-policy", optional = true }
 bon = "3.8.1"
 cached = "0.56.0"
 cfg-if = "1.0.4"

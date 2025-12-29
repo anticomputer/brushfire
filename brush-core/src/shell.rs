@@ -153,6 +153,11 @@ pub struct Shell {
     /// Error formatter for customizing error display.
     #[cfg_attr(feature = "serde", serde(skip, default = "default_error_formatter"))]
     error_formatter: ErrorFormatterHelper,
+
+    /// Optional policy engine for brushfire enforcement.
+    #[cfg(feature = "policy")]
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub policy: Option<std::sync::Arc<brushfire_policy::PolicyEngine>>,
 }
 
 impl Clone for Shell {
@@ -183,6 +188,8 @@ impl Clone for Shell {
             key_bindings: self.key_bindings.clone(),
             history: self.history.clone(),
             error_formatter: self.error_formatter.clone(),
+            #[cfg(feature = "policy")]
+            policy: self.policy.clone(),
             depth: self.depth + 1,
         }
     }
@@ -408,6 +415,9 @@ pub struct CreateOptions {
     pub error_formatter: Option<ErrorFormatterHelper>,
     /// Brush implementation version.
     pub shell_version: Option<String>,
+    /// Optional policy engine for brushfire enforcement.
+    #[cfg(feature = "policy")]
+    pub policy_engine: Option<std::sync::Arc<brushfire_policy::PolicyEngine>>,
 }
 
 impl Default for Shell {
@@ -439,6 +449,8 @@ impl Default for Shell {
             key_bindings: None,
             history: None,
             error_formatter: default_error_formatter(),
+            #[cfg(feature = "policy")]
+            policy: None,
         }
     }
 }
@@ -470,6 +482,8 @@ impl Shell {
             error_formatter: options
                 .error_formatter
                 .unwrap_or_else(default_error_formatter),
+            #[cfg(feature = "policy")]
+            policy: options.policy_engine,
             ..Self::default()
         };
 
@@ -1649,6 +1663,33 @@ impl Shell {
         params: &ExecutionParameters,
     ) -> Result<openfiles::OpenFile, std::io::Error> {
         let path_to_open = self.absolute_path(path.as_ref());
+
+        // NEW: Policy check before opening
+        #[cfg(feature = "policy")]
+        if let Some(ref policy) = self.policy {
+            // Conservative approach: check both read and write access
+            // First check for read access (less restrictive)
+            if let Err(e) = policy.check_file_access(&path_to_open, brushfire_policy::FileAccessMode::Read) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!("Policy violation: {e}"),
+                ));
+            }
+
+            // If file might be written, also check write access
+            // For now, we conservatively assume any open could be a write
+            // TODO: Refine this based on actual OpenOptions settings
+            if let Err(e) = policy.check_file_access(&path_to_open, brushfire_policy::FileAccessMode::Write) {
+                // Only error if it's not a read-only policy violation
+                // This allows read-only files to be opened for reading
+                if !matches!(e, brushfire_policy::PolicyViolation::FileReadOnly(_)) {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        format!("Policy violation: {e}"),
+                    ));
+                }
+            }
+        }
 
         // See if this is a reference to a file descriptor, in which case the actual
         // /dev/fd* file path for this process may not match with what's in the execution
