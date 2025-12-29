@@ -136,18 +136,10 @@ whitelist_exec /usr/bin/find
 # Allow project directory
 whitelist /home/runner/project
 
-# Allow build tools
+# Allow build tools (default deny all other commands)
 whitelist_exec /usr/bin/cargo
 whitelist_exec /usr/bin/rustc
 whitelist_exec /usr/local/bin/*
-
-# Block network access
-blacklist /usr/bin/curl
-blacklist /usr/bin/wget
-
-# Block shells to prevent policy bypass
-blacklist /bin/bash
-blacklist /bin/sh
 ```
 
 ### Read-Only System Access
