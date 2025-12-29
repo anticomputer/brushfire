@@ -63,6 +63,10 @@ pub struct ActionContext {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
 
+    /// Command line arguments (for command spawn checks)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub args: Option<Vec<String>>,
+
     /// Current working directory
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cwd: Option<String>,
@@ -237,6 +241,7 @@ impl PolicyEvent {
                     FileAccessMode::Execute => "execute".to_string(),
                 },
                 command: std::env::args().collect::<Vec<_>>().get(0).cloned(),
+                args: None,
                 cwd: std::env::current_dir()
                     .ok()
                     .map(|p| p.display().to_string()),
@@ -250,6 +255,7 @@ impl PolicyEvent {
     /// Create a new command spawn check event
     pub fn command_spawn_check(
         command: PathBuf,
+        args: Option<Vec<String>>,
         result: CheckResult,
         reason: String,
     ) -> Self {
@@ -261,6 +267,7 @@ impl PolicyEvent {
                 resource: command.display().to_string(),
                 mode: "execute".to_string(),
                 command: Some(command.display().to_string()),
+                args,
                 cwd: std::env::current_dir()
                     .ok()
                     .map(|p| p.display().to_string()),

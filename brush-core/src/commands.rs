@@ -616,8 +616,19 @@ pub(crate) fn execute_external_command(
 
         let executable_path = Path::new(executable_path);
 
+        // Collect command arguments for observability
+        let cmd_args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        let args = if cmd_args.is_empty() {
+            None
+        } else {
+            Some(cmd_args)
+        };
+
         // Check if command execution is blocked
-        policy.check_process_spawn(executable_path).map_err(|e| {
+        policy.check_process_spawn(executable_path, args).map_err(|e| {
             error::Error::from(error::ErrorKind::FailedToExecuteCommand(
                 context.command_name.clone(),
                 std::io::Error::new(

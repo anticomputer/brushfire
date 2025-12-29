@@ -18,6 +18,11 @@ class WebhookHandler(BaseHTTPRequestHandler):
             print(f"  Type: {event.get('event_type')}")
             print(f"  Resource: {event['action']['resource']}")
             print(f"  Mode: {event['action']['mode']}")
+
+            # Display args for command spawn checks
+            if 'args' in event['action'] and event['action']['args']:
+                print(f"  Args: {' '.join(event['action']['args'])}")
+
             print(f"  Result: {event['result']}")
             print(f"  Reason: {event['reason']}")
             print(f"  Session: {event.get('session_id', 'N/A')[:8]}...")

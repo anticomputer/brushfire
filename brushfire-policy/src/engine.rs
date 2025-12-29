@@ -5,6 +5,8 @@ use crate::rules::{
     FileAccessMode, FilesystemRule, Policy, RuleAction,
 };
 use std::path::{Path, PathBuf};
+
+#[cfg(feature = "webhook")]
 use std::sync::Arc;
 
 #[cfg(feature = "webhook")]
@@ -197,7 +199,8 @@ impl PolicyEngine {
     /// # Errors
     ///
     /// Returns a [`PolicyViolation`] if the command is blocked by policy.
-    pub fn check_process_spawn(&self, command_path: &Path) -> Result<(), PolicyViolation> {
+    #[cfg_attr(not(feature = "webhook"), allow(unused_variables))]
+    pub fn check_process_spawn(&self, command_path: &Path, args: Option<Vec<String>>) -> Result<(), PolicyViolation> {
         let canonical_path = self.canonicalize_path(command_path)?;
 
         for rule in &self.policy.command_rules {
@@ -208,6 +211,7 @@ impl PolicyEngine {
                         if let Some(ref reporter) = self.reporter {
                             let event = PolicyEvent::command_spawn_check(
                                 canonical_path.clone(),
+                                args.clone(),
                                 CheckResult::Denied,
                                 "command_blacklisted".to_string(),
                             );
@@ -223,6 +227,7 @@ impl PolicyEngine {
                         if let Some(ref reporter) = self.reporter {
                             let event = PolicyEvent::command_spawn_check(
                                 canonical_path.clone(),
+                                args.clone(),
                                 CheckResult::Allowed,
                                 "command_explicitly_allowed".to_string(),
                             );
@@ -240,6 +245,7 @@ impl PolicyEngine {
         if let Some(ref reporter) = self.reporter {
             let event = PolicyEvent::command_spawn_check(
                 canonical_path,
+                args,
                 CheckResult::Allowed,
                 "no_matching_rules".to_string(),
             );
@@ -425,7 +431,7 @@ mod tests {
         // Should block curl (if it exists)
         if PathBuf::from("/usr/bin/curl").exists() {
             assert!(engine
-                .check_process_spawn(&PathBuf::from("/usr/bin/curl"))
+                .check_process_spawn(&PathBuf::from("/usr/bin/curl"), None)
                 .is_err());
         }
     }
