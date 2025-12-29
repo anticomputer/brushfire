@@ -482,6 +482,9 @@ async fn instantiate_shell_from_args(
 
     // Load policy if profile is specified (brushfire feature).
     #[cfg(feature = "policy")]
+    let mut wrapper_temp_dir: Option<tempfile::TempDir> = None;
+
+    #[cfg(feature = "policy")]
     let shell = if let Some(ref profile_path) = args.profile {
         let mut parser = brushfire_policy::ProfileParser::new();
         let policy = parser.parse_file(profile_path).map_err(|e| {
@@ -493,6 +496,7 @@ async fn instantiate_shell_from_args(
         let mut policy_engine = brushfire_policy::PolicyEngine::new(policy);
 
         // Auto-blacklist real utilities if --wrap-coreutils is enabled
+        // Also prepare wrapper directory for auto-whitelist if in default-deny mode
         if args.wrap_coreutils {
             crate::wrappers::auto_blacklist_utilities(&mut policy_engine).map_err(|e| {
                 std::io::Error::new(
@@ -500,6 +504,24 @@ async fn instantiate_shell_from_args(
                     format!("Failed to auto-blacklist utilities: {}", e),
                 )
             })?;
+
+            // Create wrapper directory early so we can auto-whitelist it
+            let temp_dir = tempfile::tempdir().map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to create wrapper temp directory: {}", e),
+                )
+            })?;
+
+            // Auto-whitelist wrapper directory if in default-deny mode
+            crate::wrappers::auto_whitelist_wrappers(&mut policy_engine, temp_dir.path()).map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("Failed to auto-whitelist wrappers: {}", e),
+                )
+            })?;
+
+            wrapper_temp_dir = Some(temp_dir);
         }
 
         // Set up webhook reporter if URL provided and store session ID for wrappers
@@ -544,6 +566,7 @@ async fn instantiate_shell_from_args(
                 &mut shell,
                 webhook_url,
                 session_id.as_ref(),
+                wrapper_temp_dir.take(),
             )?)
         } else {
             None

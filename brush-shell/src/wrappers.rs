@@ -62,6 +62,63 @@ pub fn auto_blacklist_utilities(policy: &mut PolicyEngine) -> Result<(), std::io
     Ok(())
 }
 
+/// Auto-whitelist wrapper directory when in default-deny mode.
+///
+/// When `whitelist_exec` rules are in use (default-deny for commands), wrapped
+/// coreutils need to be explicitly allowed. This function adds the wrapper
+/// directory to the allowed command patterns and whitelists it for file access.
+///
+/// **SECURITY WARNING**: This prints a warning to stderr because allowing wrapped
+/// coreutils in strict sandboxes may enable policy bypasses or escalation attacks.
+///
+/// This should be called AFTER the wrappers are set up and we know the wrapper directory.
+///
+/// # Arguments
+///
+/// * `policy` - Mutable reference to the policy engine
+/// * `wrapper_dir` - Path to the wrapper directory
+///
+/// # Errors
+///
+/// Returns an error if the wrapper directory cannot be canonicalized
+pub fn auto_whitelist_wrappers(
+    policy: &mut PolicyEngine,
+    wrapper_dir: &Path,
+) -> Result<(), std::io::Error> {
+    // Only do this if we're in default-deny mode for commands
+    if !policy.is_command_default_deny() {
+        return Ok(());
+    }
+
+    // Print security warning to stderr
+    eprintln!("\n[WARNING] --wrap-coreutils enabled with whitelist_exec rules:");
+    eprintln!("[WARNING] Wrapped coreutils will be automatically allowed.");
+    eprintln!("[WARNING] This may enable policy bypasses or privilege escalation.");
+    eprintln!("[WARNING] In strict sandboxes, consider using explicit command allow rules.\n");
+
+    // Canonicalize the wrapper directory
+    let canonical_wrapper = wrapper_dir.canonicalize()?;
+
+    // Add allow rule for all executables in the wrapper directory
+    let pattern = format!("{}/*", canonical_wrapper.display());
+    policy.add_command_allow_rule(pattern.clone());
+
+    // Also add non-canonical version if different (for symlink handling)
+    let non_canonical_pattern = format!("{}/*", wrapper_dir.display());
+    if non_canonical_pattern != pattern {
+        policy.add_command_allow_rule(non_canonical_pattern);
+    }
+
+    // Also whitelist the wrapper directory for filesystem access
+    // (needed so the wrappers can be executed)
+    policy.add_filesystem_rule(brushfire_policy::rules::FilesystemRule::Whitelist {
+        path: canonical_wrapper,
+        recursive: true,
+    });
+
+    Ok(())
+}
+
 /// Resolve real utility paths from the current PATH before modification.
 ///
 /// This ensures we call the version of utilities that were originally in PATH,
@@ -106,7 +163,7 @@ fn resolve_real_utility_paths(shell: &Shell) -> Result<Vec<(String, PathBuf)>, s
 ///
 /// This function:
 /// 1. Resolves real utility paths from current PATH
-/// 2. Creates a temporary directory
+/// 2. Uses provided temp directory (or creates one if None)
 /// 3. Copies wrapper binaries to the temp directory
 /// 4. Sets BRUSHFIRE_POLICY and BRUSHFIRE_*_PATH environment variables
 /// 5. Optionally sets BRUSHFIRE_WEBHOOK_URL and BRUSHFIRE_SESSION_ID for webhook reporting
@@ -120,6 +177,7 @@ fn resolve_real_utility_paths(shell: &Shell) -> Result<Vec<(String, PathBuf)>, s
 /// * `shell` - Mutable reference to the shell to update its PATH
 /// * `webhook_url` - Optional webhook URL for policy event reporting
 /// * `session_id` - Optional session ID for correlating webhook events
+/// * `temp_dir` - Optional pre-created temp directory (for auto-whitelisting)
 ///
 /// # Returns
 ///
@@ -135,12 +193,13 @@ pub fn setup_coreutils_wrappers(
     shell: &mut Shell,
     webhook_url: Option<&String>,
     session_id: Option<&String>,
+    temp_dir: Option<TempDir>,
 ) -> Result<WrapperCleanup, std::io::Error> {
     // 1. Resolve real utility paths BEFORE modifying PATH
     let real_paths = resolve_real_utility_paths(shell)?;
 
-    // 2. Create temp directory
-    let temp_dir = tempfile::tempdir()?;
+    // 2. Use provided temp directory or create new one
+    let temp_dir = temp_dir.map_or_else(tempfile::tempdir, Ok)?;
 
     // 3. Copy wrapper binaries to temp directory
     copy_wrapper_binaries(temp_dir.path())?;

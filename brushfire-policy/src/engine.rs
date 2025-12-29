@@ -358,6 +358,18 @@ impl PolicyEngine {
         });
     }
 
+    /// Add a filesystem rule dynamically to the policy.
+    ///
+    /// This is used by the `--wrap-coreutils` feature to automatically whitelist
+    /// wrapper directories in default-deny mode.
+    ///
+    /// # Arguments
+    ///
+    /// * `rule` - The filesystem rule to add
+    pub fn add_filesystem_rule(&mut self, rule: FilesystemRule) {
+        self.policy.add_filesystem_rule(rule);
+    }
+
     /// Add a command rule dynamically to the policy.
     ///
     /// This is used by the `--wrap-coreutils` feature to automatically blacklist
@@ -371,6 +383,30 @@ impl PolicyEngine {
             pattern,
             action: crate::rules::RuleAction::Deny,
         });
+    }
+
+    /// Add a command allow rule dynamically to the policy.
+    ///
+    /// This is used by the `--wrap-coreutils` feature to automatically whitelist
+    /// wrapper paths when in default-deny mode.
+    ///
+    /// # Arguments
+    ///
+    /// * `pattern` - The command pattern to allow (e.g., "/tmp/wrappers/*")
+    pub fn add_command_allow_rule(&mut self, pattern: String) {
+        self.policy.add_command_rule(crate::rules::CommandRule {
+            pattern,
+            action: crate::rules::RuleAction::Allow,
+        });
+    }
+
+    /// Check if command execution is in default-deny mode.
+    ///
+    /// Returns true if whitelist_exec rules are active and commands are
+    /// denied by default unless explicitly allowed.
+    #[must_use]
+    pub fn is_command_default_deny(&self) -> bool {
+        self.default_command_policy == DefaultPolicy::DenyAll
     }
 }
 
