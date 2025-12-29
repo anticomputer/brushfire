@@ -454,6 +454,7 @@ dependencies = [
  "brush-interactive",
  "brush-parser",
  "brushfire-policy",
+ "brushfire-wrappers",
  "clap",
  "color-print",
  "colored",
@@ -479,6 +480,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "strip-ansi-escapes",
+ "tempfile",
  "test-with",
  "tokio",
  "tracing",
@@ -494,6 +496,17 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "glob",
+ "tempfile",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "brushfire-wrappers"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "brushfire-policy",
+ "once_cell",
  "tempfile",
  "thiserror 1.0.69",
 ]

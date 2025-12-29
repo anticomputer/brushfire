@@ -9,6 +9,7 @@ members = [
     "brush-experimental-builtins",
     "brush-interactive",
     "brushfire-policy",
+    "brushfire-wrappers",
     "fuzz",
     "xtask",
 ]
