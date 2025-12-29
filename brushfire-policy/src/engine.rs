@@ -207,6 +207,37 @@ impl PolicyEngine {
             .and_then(|p| Some(p.matches_path(command_path)))
             .unwrap_or(false)
     }
+
+    /// Add a blacklist rule dynamically to the policy.
+    ///
+    /// This is used by the `--wrap-coreutils` feature to automatically blacklist
+    /// real utility paths to prevent bypass via absolute paths.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - The path to blacklist
+    /// * `recursive` - Whether to blacklist recursively
+    pub fn add_blacklist_rule(&mut self, path: PathBuf, recursive: bool) {
+        self.policy.add_filesystem_rule(FilesystemRule::Blacklist {
+            path,
+            recursive,
+        });
+    }
+
+    /// Add a command rule dynamically to the policy.
+    ///
+    /// This is used by the `--wrap-coreutils` feature to automatically blacklist
+    /// real utility paths to prevent bypass via absolute paths.
+    ///
+    /// # Arguments
+    ///
+    /// * `pattern` - The command pattern to block (e.g., "/bin/cat")
+    pub fn add_command_deny_rule(&mut self, pattern: String) {
+        self.policy.add_command_rule(crate::rules::CommandRule {
+            pattern,
+            action: crate::rules::RuleAction::Deny,
+        });
+    }
 }
 
 #[cfg(test)]
