@@ -16,6 +16,7 @@ use crate::reporter::{CheckResult, PolicyEvent, PolicyReporter};
 pub struct PolicyEngine {
     policy: Policy,
     default_policy: DefaultPolicy,
+    default_command_policy: DefaultPolicy,
 
     #[cfg(feature = "webhook")]
     reporter: Option<Arc<dyn PolicyReporter>>,
@@ -34,7 +35,7 @@ impl PolicyEngine {
     /// Create a new policy engine with the given policy.
     #[must_use]
     pub fn new(policy: Policy) -> Self {
-        // If there are any whitelist rules, switch to restrictive mode
+        // If there are any whitelist rules, switch to restrictive mode for filesystem
         let has_whitelist = policy
             .filesystem_rules
             .iter()
@@ -46,9 +47,22 @@ impl PolicyEngine {
             DefaultPolicy::AllowAll
         };
 
+        // If there are any whitelist_exec command rules, switch to restrictive mode for commands
+        let has_allow_rules = policy
+            .command_rules
+            .iter()
+            .any(|rule| rule.action == RuleAction::Allow);
+
+        let default_command_policy = if has_allow_rules {
+            DefaultPolicy::DenyAll
+        } else {
+            DefaultPolicy::AllowAll
+        };
+
         Self {
             policy,
             default_policy,
+            default_command_policy,
             #[cfg(feature = "webhook")]
             reporter: None,
         }
@@ -240,7 +254,25 @@ impl PolicyEngine {
             }
         }
 
-        // Report allowed spawn (no matching rules)
+        // No rules matched - check default command policy
+        if self.default_command_policy == DefaultPolicy::DenyAll {
+            #[cfg(feature = "webhook")]
+            if let Some(ref reporter) = self.reporter {
+                let event = PolicyEvent::command_spawn_check(
+                    canonical_path.clone(),
+                    args.clone(),
+                    CheckResult::Denied,
+                    "command_not_explicitly_allowed".to_string(),
+                );
+                reporter.report(&event);
+            }
+
+            return Err(PolicyViolation::CommandBlocked(
+                canonical_path.display().to_string(),
+            ));
+        }
+
+        // Report allowed spawn (no matching rules, default allow mode)
         #[cfg(feature = "webhook")]
         if let Some(ref reporter) = self.reporter {
             let event = PolicyEvent::command_spawn_check(

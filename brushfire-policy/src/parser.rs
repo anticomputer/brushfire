@@ -103,6 +103,10 @@ impl ProfileParser {
                 let path = self.parse_path(&parts[1..])?;
                 Ok(Some(Directive::NoBlacklist(path)))
             }
+            "whitelist_exec" => {
+                let path = self.parse_path(&parts[1..])?;
+                Ok(Some(Directive::WhitelistExec(path)))
+            }
             "read-only" => {
                 let path = self.parse_path(&parts[1..])?;
                 Ok(Some(Directive::ReadOnly(path)))
@@ -208,6 +212,25 @@ impl ProfileParser {
             Directive::NoBlacklist(path) => {
                 policy.remove_blacklist(&path);
             }
+            Directive::WhitelistExec(path) => {
+                // Create a command rule with Allow action
+                let pattern = path.display().to_string();
+                policy.add_command_rule(CommandRule {
+                    pattern: pattern.clone(),
+                    action: RuleAction::Allow,
+                });
+
+                // Also add canonicalized version to handle symlinks (e.g., /tmp -> /private/tmp)
+                if let Some(canonical_pattern) = canonicalize_pattern(&path) {
+                    let canonical_str = canonical_pattern.display().to_string();
+                    if canonical_str != pattern {
+                        policy.add_command_rule(CommandRule {
+                            pattern: canonical_str,
+                            action: RuleAction::Allow,
+                        });
+                    }
+                }
+            }
             Directive::ReadOnly(path) => {
                 policy.add_filesystem_rule(FilesystemRule::ReadOnly {
                     path,
@@ -243,6 +266,7 @@ enum Directive {
     Whitelist(PathBuf),
     Blacklist(PathBuf),
     NoBlacklist(PathBuf),
+    WhitelistExec(PathBuf),
     ReadOnly(PathBuf),
     NoExec(PathBuf),
     Include(Policy),
@@ -256,6 +280,35 @@ fn is_command_path(path: &Path) -> bool {
         || path_str.starts_with("/usr/local/bin/")
         || path_str.starts_with("/sbin/")
         || path_str.starts_with("/usr/sbin/")
+}
+
+/// Try to canonicalize a glob pattern by canonicalizing its base path.
+/// For patterns like `/tmp/bin/*`, this extracts `/tmp/bin`, canonicalizes it,
+/// and reconstructs the pattern as `/private/tmp/bin/*` (on macOS where /tmp is a symlink).
+fn canonicalize_pattern(pattern: &Path) -> Option<PathBuf> {
+    let pattern_str = pattern.to_string_lossy();
+
+    // Find the first wildcard character
+    let wildcard_pos = pattern_str.find('*').or_else(|| pattern_str.find('?'));
+
+    if let Some(pos) = wildcard_pos {
+        // Extract base path (everything before the wildcard)
+        let base_path_str = &pattern_str[..pos];
+        let base_path = PathBuf::from(base_path_str.trim_end_matches('/'));
+
+        // Try to canonicalize the base path
+        if let Ok(canonical_base) = base_path.canonicalize() {
+            // Reconstruct the pattern with the canonical base
+            let wildcard_part = &pattern_str[pos..];
+            let canonical_pattern = format!("{}/{}", canonical_base.display(), wildcard_part.trim_start_matches('/'));
+            return Some(PathBuf::from(canonical_pattern));
+        }
+    } else {
+        // No wildcards, try to canonicalize the entire path
+        return pattern.canonicalize().ok();
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -305,6 +358,23 @@ mod tests {
         // Should create a command rule instead of filesystem rule
         assert_eq!(policy.command_rules.len(), 1);
         assert_eq!(policy.command_rules[0].pattern, "/usr/bin/curl");
+        assert_eq!(policy.command_rules[0].action, RuleAction::Deny);
+    }
+
+    #[test]
+    fn test_parse_whitelist_exec() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "whitelist_exec /tmp/bin/*").unwrap();
+
+        let mut parser = ProfileParser::new();
+        let policy = parser.parse_file(file.path()).unwrap();
+
+        // Should create at least one command rule (may create 2 if canonicalization differs)
+        assert!(!policy.command_rules.is_empty());
+
+        // First rule should be the original pattern
+        assert_eq!(policy.command_rules[0].pattern, "/tmp/bin/*");
+        assert_eq!(policy.command_rules[0].action, RuleAction::Allow);
     }
 
     #[test]
@@ -346,5 +416,32 @@ mod tests {
 
         // Blacklist should be removed
         assert_eq!(policy.filesystem_rules.len(), 0);
+    }
+
+    #[test]
+    fn test_whitelist_exec_canonicalization() {
+        // Create /tmp/bin if it doesn't exist
+        let _ = std::fs::create_dir_all("/tmp/bin");
+
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "whitelist_exec /tmp/bin/*").unwrap();
+
+        let mut parser = ProfileParser::new();
+        let policy = parser.parse_file(file.path()).unwrap();
+
+        // Should create at least one command rule
+        assert!(!policy.command_rules.is_empty());
+
+        // Check if both patterns exist (original and canonical)
+        let patterns: Vec<&str> = policy.command_rules.iter().map(|r| r.pattern.as_str()).collect();
+        assert!(patterns.contains(&"/tmp/bin/*"));
+
+        // On macOS, /tmp is a symlink to /private/tmp, so we should also have the canonical version
+        #[cfg(target_os = "macos")]
+        {
+            if patterns.len() > 1 {
+                assert!(patterns.iter().any(|p| p.contains("/private/tmp/bin/")));
+            }
+        }
     }
 }

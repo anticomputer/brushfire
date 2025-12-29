@@ -50,6 +50,7 @@ pub fn get_policy_engine() -> Result<&'static PolicyEngine, PolicyError> {
         let policy = parser.parse_file(Path::new(&profile_path))?;
 
         // Create policy engine
+        #[cfg_attr(not(feature = "webhook"), allow(unused_mut))]
         let mut engine = PolicyEngine::new(policy);
 
         // Configure webhook reporter if URL is provided
