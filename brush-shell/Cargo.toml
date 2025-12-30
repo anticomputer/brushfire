@@ -50,6 +50,7 @@ experimental-builtins = ["dep:brush-experimental-builtins"]
 experimental-load = ["dep:serde_json", "brush-core/serde"]
 policy = ["brush-core/policy", "brush-builtins/policy", "dep:brushfire-policy", "dep:brushfire-wrappers", "dep:uuid"]
 policy-webhook = ["policy", "brushfire-policy/webhook", "brushfire-wrappers/webhook"]
+embed-wrappers = ["policy"]
 
 [lints]
 workspace = true

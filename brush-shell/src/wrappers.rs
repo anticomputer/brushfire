@@ -24,6 +24,53 @@ const WRAPPED_UTILITIES: &[&str] = &[
     "tar", "find",
 ];
 
+/// Get embedded wrapper binary data for a utility
+///
+/// When the `embed-wrappers` feature is enabled, wrapper binaries are embedded
+/// in the brush binary at compile time. Otherwise, returns None and wrappers
+/// are copied from the build directory at runtime.
+#[cfg(feature = "embed-wrappers")]
+fn get_embedded_wrapper(util_name: &str) -> Option<&'static [u8]> {
+    match util_name {
+        "cat" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/cat"))),
+        "rm" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/rm"))),
+        "cp" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/cp"))),
+        "mv" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/mv"))),
+        "ls" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/ls"))),
+        "grep" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/grep"))),
+        "head" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/head"))),
+        "tail" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/tail"))),
+        "touch" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/touch"))),
+        "mkdir" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/mkdir"))),
+        "ln" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/ln"))),
+        "chmod" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/chmod"))),
+        "chown" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/chown"))),
+        "chgrp" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/chgrp"))),
+        "rmdir" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/rmdir"))),
+        "dd" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/dd"))),
+        "file" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/file"))),
+        "stat" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/stat"))),
+        "sed" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/sed"))),
+        "awk" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/awk"))),
+        "cut" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/cut"))),
+        "paste" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/paste"))),
+        "sort" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/sort"))),
+        "uniq" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/uniq"))),
+        "tr" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/tr"))),
+        "wc" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/wc"))),
+        "tee" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/tee"))),
+        "diff" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/diff"))),
+        "tar" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/tar"))),
+        "find" => Some(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../target/release/find"))),
+        _ => None,
+    }
+}
+
+#[cfg(not(feature = "embed-wrappers"))]
+fn get_embedded_wrapper(_util_name: &str) -> Option<&'static [u8]> {
+    None
+}
+
 /// Cleanup handler for wrapper setup.
 ///
 /// When dropped, restores the original PATH and cleans up the temporary directory.
@@ -350,30 +397,40 @@ pub fn setup_coreutils_wrappers(
 
 /// Copy wrapper binaries to the temporary directory.
 ///
-/// For now, this copies from the build target directory. In production, these
-/// would be embedded in the binary using include_bytes!.
+/// When the `embed-wrappers` feature is enabled, extracts embedded binaries.
+/// Otherwise, copies from the build target directory (development mode).
 fn copy_wrapper_binaries(dest_dir: &Path) -> Result<(), std::io::Error> {
-    // TODO: In production, use embedded binaries via include_bytes!
-    // For now, copy from the build directory for testing
-
-    // Try to find the wrapper binaries in the target directory
-    let current_exe = env::current_exe()?;
-    let exe_dir = current_exe
-        .parent()
-        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Cannot find exe dir"))?;
-
     for util_name in WRAPPED_UTILITIES {
-        let src_path = exe_dir.join(util_name);
+        let dest_path = dest_dir.join(util_name);
 
-        // Only copy if the wrapper exists
-        if src_path.exists() {
-            let dest_path = dest_dir.join(util_name);
-            fs::copy(&src_path, &dest_path)?;
+        // Try embedded wrapper first
+        if let Some(embedded_data) = get_embedded_wrapper(util_name) {
+            // Write embedded binary to temp directory
+            fs::write(&dest_path, embedded_data)?;
 
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
                 fs::set_permissions(&dest_path, fs::Permissions::from_mode(0o755))?;
+            }
+        } else {
+            // Fall back to copying from build directory (development mode)
+            let current_exe = env::current_exe()?;
+            let exe_dir = current_exe.parent().ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::NotFound, "Cannot find exe dir")
+            })?;
+
+            let src_path = exe_dir.join(util_name);
+
+            // Only copy if the wrapper exists
+            if src_path.exists() {
+                fs::copy(&src_path, &dest_path)?;
+
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    fs::set_permissions(&dest_path, fs::Permissions::from_mode(0o755))?;
+                }
             }
         }
     }
