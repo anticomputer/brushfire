@@ -59,6 +59,79 @@ noexec /home/user/workspace
 # Default deny all other access
 ```
 
+## Policy Grammar
+
+Brushfire uses a unified ACL model where directives apply to both filesystem and command operations:
+
+### Core Directives
+
+**`whitelist <path>`** - Allow filesystem access (read/write/execute) AND command execution
+- Triggers default-deny mode for both filesystem and commands
+- Filesystem rules are recursive (includes subdirectories)
+- Command matching uses glob patterns (`/bin/*` to match all commands)
+
+**`blacklist <path>`** - Deny filesystem access AND command execution
+- Takes precedence over whitelist
+- Blocks both file operations and process spawning
+
+**`noexec <path>`** - Allow filesystem access but block execution
+- Enables read/write operations while preventing command spawning
+- Useful for data directories that should not contain executables
+
+**`read-only <path>`** - Allow read/execute but block writes
+- Protects paths from modification
+
+### Examples
+
+```bash
+# Default-deny: only allow specific paths and commands
+whitelist /workspace
+whitelist /bin/ls
+whitelist /bin/cat
+
+# Allow file access but prevent execution
+whitelist /data
+noexec /data
+
+# Block specific dangerous commands
+blacklist /usr/bin/curl
+blacklist /usr/bin/wget
+```
+
+See [USAGE.md](USAGE.md) for complete syntax and examples.
+
+## Observability
+
+Brushfire includes optional webhook-based observability for monitoring all policy checks:
+
+### Webhook Events
+
+When built with `--webhook`, Brushfire can send policy events to an HTTP endpoint:
+
+```bash
+# Build with webhook support
+./build.sh dev --webhook
+
+# Run with webhook reporting
+./target/debug/brush --profile my.profile \
+  --policy-webhook http://localhost:8080 \
+  -c 'commands here'
+```
+
+**Event structure:**
+- File access checks (read/write/execute)
+- Command spawn attempts
+- Policy decisions (allowed/denied)
+- Violation reasons
+
+**Use cases:**
+- Audit trails for compliance
+- Real-time monitoring of agent behavior
+- Security analytics and alerting
+- Development debugging
+
+See the webhook reporter implementation in `brushfire-policy/src/reporter.rs` for event schema details.
+
 ## About Brush
 
 For details about the brush shell itself, see the [upstream README](https://github.com/reubeno/brush/blob/main/README.md).
