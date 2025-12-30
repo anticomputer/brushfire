@@ -10,12 +10,26 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Check if cargo is available
+if ! command -v cargo &> /dev/null; then
+    echo "Error: cargo not found. Please install Rust: https://rustup.rs/" >&2
+    exit 1
+fi
+
+# Detect if output is a TTY for color support
+if [[ -t 1 ]]; then
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    YELLOW='\033[1;33m'
+    BLUE='\033[0;34m'
+    NC='\033[0m'
+else
+    RED=''
+    GREEN=''
+    YELLOW=''
+    BLUE=''
+    NC=''
+fi
 
 print_info() {
     echo -e "${BLUE}==>${NC} $1"
@@ -87,12 +101,18 @@ build_dev() {
         cargo build -p brush-shell --features "$features" --quiet
     fi
 
+    # Verify binary was built
+    if [[ ! -f target/debug/brush ]]; then
+        print_error "Build failed: target/debug/brush not found"
+        exit 1
+    fi
+
     print_success "Development build complete"
     print_info "Binary: target/debug/brush"
     print_info "Wrappers: target/debug/{cat,ls,grep,...}"
 
     # Show size
-    local size=$(du -h target/debug/brush | cut -f1)
+    local size=$(du -h target/debug/brush 2>/dev/null | cut -f1)
     print_info "Binary size: $size"
 }
 
@@ -120,12 +140,18 @@ build_release() {
         cargo build --release -p brush-shell --features "$features" --quiet
     fi
 
+    # Verify binary was built
+    if [[ ! -f target/release/brush ]]; then
+        print_error "Build failed: target/release/brush not found"
+        exit 1
+    fi
+
     print_success "Release build complete"
     print_info "Binary: target/release/brush"
     print_info "Wrappers: target/release/{cat,ls,grep,...}"
 
     # Show size
-    local size=$(du -h target/release/brush | cut -f1)
+    local size=$(du -h target/release/brush 2>/dev/null | cut -f1)
     print_info "Binary size: $size"
 }
 
@@ -137,19 +163,31 @@ build_release_embedded() {
 
     print_info "Building release with embedded wrappers (for distribution)..."
 
-    # Build wrappers in release mode FIRST
+    # Build wrappers in release mode FIRST (with webhook if enabled)
     print_info "Building wrapper binaries (release mode)..."
+    local wrapper_features=""
+    if [[ "$ENABLE_WEBHOOK" == "1" ]]; then
+        wrapper_features="--features webhook"
+    fi
+
     if [[ "$VERBOSE" == "1" ]]; then
-        cargo build --release -p brushfire-wrappers
+        cargo build --release -p brushfire-wrappers $wrapper_features
     else
-        cargo build --release -p brushfire-wrappers --quiet
+        cargo build --release -p brushfire-wrappers $wrapper_features --quiet
     fi
 
     print_success "Wrappers built"
 
-    # Verify wrappers exist
-    if [[ ! -f target/release/cat ]] || [[ ! -f target/release/ls ]]; then
-        print_error "Wrapper binaries not found in target/release/"
+    # Verify key wrappers exist (sample check)
+    local missing_wrappers=()
+    for util in cat ls grep rm cp; do
+        if [[ ! -f "target/release/$util" ]]; then
+            missing_wrappers+=("$util")
+        fi
+    done
+
+    if [[ ${#missing_wrappers[@]} -gt 0 ]]; then
+        print_error "Wrapper binaries not found: ${missing_wrappers[*]}"
         print_error "Cannot embed wrappers"
         exit 1
     fi
@@ -163,16 +201,22 @@ build_release_embedded() {
         cargo build --release -p brush-shell --features "$features" --quiet
     fi
 
+    # Verify binary was built
+    if [[ ! -f target/release/brush ]]; then
+        print_error "Build failed: target/release/brush not found"
+        exit 1
+    fi
+
     print_success "Release build with embedded wrappers complete"
     print_info "Binary: target/release/brush"
     print_info "Distribution: Single self-contained binary"
 
     # Show size
-    local size=$(du -h target/release/brush | cut -f1)
+    local size=$(du -h target/release/brush 2>/dev/null | cut -f1)
     print_info "Binary size: $size (includes embedded wrappers)"
 
     # Verify embedding by checking size
-    local size_mb=$(du -m target/release/brush | cut -f1)
+    local size_mb=$(du -m target/release/brush 2>/dev/null | cut -f1)
     if [[ "$size_mb" -lt 10 ]]; then
         print_warning "Binary size is unusually small ($size)"
         print_warning "Wrappers may not be properly embedded"
