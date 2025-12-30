@@ -115,8 +115,9 @@ pub fn auto_blacklist_utilities(policy: &mut PolicyEngine) -> Result<(), std::io
 /// coreutils need to be explicitly allowed. This function adds the wrapper
 /// directory to the allowed command patterns and whitelists it for file access.
 ///
-/// **SECURITY WARNING**: This prints a warning to stderr because allowing wrapped
-/// coreutils in strict sandboxes may enable policy bypasses or escalation attacks.
+/// **SECURITY WARNING**: This prints a warning to stderr (unless suppressed) because
+/// allowing wrapped coreutils in strict sandboxes may enable policy bypasses or
+/// escalation attacks.
 ///
 /// This should be called AFTER the wrappers are set up and we know the wrapper directory.
 ///
@@ -124,6 +125,7 @@ pub fn auto_blacklist_utilities(policy: &mut PolicyEngine) -> Result<(), std::io
 ///
 /// * `policy` - Mutable reference to the policy engine
 /// * `wrapper_dir` - Path to the wrapper directory
+/// * `suppress_warning` - If true, suppress the security warning
 ///
 /// # Errors
 ///
@@ -131,17 +133,20 @@ pub fn auto_blacklist_utilities(policy: &mut PolicyEngine) -> Result<(), std::io
 pub fn auto_whitelist_wrappers(
     policy: &mut PolicyEngine,
     wrapper_dir: &Path,
+    suppress_warning: bool,
 ) -> Result<(), std::io::Error> {
     // Only do this if we're in default-deny mode for commands
     if !policy.is_command_default_deny() {
         return Ok(());
     }
 
-    // Print security warning to stderr
-    eprintln!("\n[WARNING] --wrap-coreutils enabled with whitelist rules:");
-    eprintln!("[WARNING] Wrapped coreutils will be automatically allowed.");
-    eprintln!("[WARNING] This may enable policy bypasses or privilege escalation.");
-    eprintln!("[WARNING] In strict sandboxes, consider using explicit command allow rules.\n");
+    // Print security warning to stderr (unless suppressed)
+    if !suppress_warning {
+        eprintln!("\n[WARNING] --wrap-coreutils enabled with whitelist rules:");
+        eprintln!("[WARNING] Wrapped coreutils will be automatically allowed.");
+        eprintln!("[WARNING] This may enable policy bypasses or privilege escalation.");
+        eprintln!("[WARNING] In strict sandboxes, consider using explicit command allow rules.\n");
+    }
 
     // Canonicalize the wrapper directory
     let canonical_wrapper = wrapper_dir.canonicalize()?;

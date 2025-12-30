@@ -4,6 +4,7 @@ use crate::error::PolicyViolation;
 use crate::rules::{
     FileAccessMode, FilesystemRule, Policy, RuleAction,
 };
+use path_clean::PathClean;
 use std::path::{Path, PathBuf};
 
 #[cfg(feature = "webhook")]
@@ -335,13 +336,15 @@ impl PolicyEngine {
             }
         }
 
-        // Last resort: try to make it absolute at least
+        // Last resort: normalize the path using path-clean
+        // This resolves . and .. components even when the path doesn't exist
         if path.is_absolute() {
-            Ok(path.to_path_buf())
+            Ok(path.clean())
         } else {
+            // Make relative path absolute first, then normalize
             std::env::current_dir()
-                .map(|cwd| cwd.join(path))
-                .or_else(|_| Ok(path.to_path_buf()))
+                .map(|cwd| cwd.join(path).clean())
+                .or_else(|_| Ok(path.clean()))
         }
     }
 

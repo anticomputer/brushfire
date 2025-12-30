@@ -514,7 +514,11 @@ async fn instantiate_shell_from_args(
             })?;
 
             // Auto-whitelist wrapper directory if in default-deny mode
-            crate::wrappers::auto_whitelist_wrappers(&mut policy_engine, temp_dir.path()).map_err(|e| {
+            crate::wrappers::auto_whitelist_wrappers(
+                &mut policy_engine,
+                temp_dir.path(),
+                args.suppress_coreutils_warning,
+            ).map_err(|e| {
                 std::io::Error::new(
                     std::io::ErrorKind::Other,
                     format!("Failed to auto-whitelist wrappers: {}", e),

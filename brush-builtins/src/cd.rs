@@ -67,6 +67,10 @@ impl builtins::Command for CdCommand {
             }
         };
 
+        // Resolve target_dir to absolute path for policy check
+        // Use shell's working directory, not process's current directory
+        let absolute_target = context.shell.absolute_path(&target_dir);
+
         if self.use_physical_dir
             || context
                 .shell
@@ -78,14 +82,15 @@ impl builtins::Command for CdCommand {
                 return error::unimp("cd -e");
             }
 
-            target_dir = context.shell.absolute_path(target_dir).canonicalize()?;
+            target_dir = absolute_target.canonicalize()?;
         }
 
         // NEW: Policy check before changing directory
+        // Use absolute_target for the check to ensure relative paths are resolved correctly
         #[cfg(feature = "policy")]
         if let Some(ref policy) = context.shell.policy {
             policy
-                .check_file_access(&target_dir, brushfire_policy::FileAccessMode::Read)
+                .check_file_access(&absolute_target, brushfire_policy::FileAccessMode::Read)
                 .map_err(|e| {
                     error::Error::from(std::io::Error::new(
                         std::io::ErrorKind::PermissionDenied,
