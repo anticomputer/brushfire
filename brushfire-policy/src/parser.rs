@@ -103,10 +103,6 @@ impl ProfileParser {
                 let path = self.parse_path(&parts[1..])?;
                 Ok(Some(Directive::NoBlacklist(path)))
             }
-            "whitelist_exec" => {
-                let path = self.parse_path(&parts[1..])?;
-                Ok(Some(Directive::WhitelistExec(path)))
-            }
             "no-safe-dev-defaults" => {
                 // Disable automatic whitelisting of safe /dev files
                 Ok(Some(Directive::NoSafeDevDefaults))
@@ -194,37 +190,20 @@ impl ProfileParser {
     fn apply_directive(&self, policy: &mut Policy, directive: Directive) -> Result<(), ParseError> {
         match directive {
             Directive::Whitelist(path) => {
+                // Add filesystem whitelist rule
                 policy.add_filesystem_rule(FilesystemRule::Whitelist {
-                    path,
+                    path: path.clone(),
                     recursive: true,
                 });
-            }
-            Directive::Blacklist(path) => {
-                // Check if this is a command path (starts with /bin, /usr/bin, etc.)
-                if is_command_path(&path) {
-                    policy.add_command_rule(CommandRule {
-                        pattern: path.display().to_string(),
-                        action: RuleAction::Deny,
-                    });
-                } else {
-                    policy.add_filesystem_rule(FilesystemRule::Blacklist {
-                        path,
-                        recursive: true,
-                    });
-                }
-            }
-            Directive::NoBlacklist(path) => {
-                policy.remove_blacklist(&path);
-            }
-            Directive::WhitelistExec(path) => {
-                // Create a command rule with Allow action
+
+                // Also add command Allow rule
                 let pattern = path.display().to_string();
                 policy.add_command_rule(CommandRule {
                     pattern: pattern.clone(),
                     action: RuleAction::Allow,
                 });
 
-                // Also add canonicalized version to handle symlinks (e.g., /tmp -> /private/tmp)
+                // Add canonicalized version to handle symlinks (e.g., /tmp -> /private/tmp)
                 if let Some(canonical_pattern) = canonicalize_pattern(&path) {
                     let canonical_str = canonical_pattern.display().to_string();
                     if canonical_str != pattern {
@@ -234,6 +213,34 @@ impl ProfileParser {
                         });
                     }
                 }
+            }
+            Directive::Blacklist(path) => {
+                // Add filesystem blacklist rule
+                policy.add_filesystem_rule(FilesystemRule::Blacklist {
+                    path: path.clone(),
+                    recursive: true,
+                });
+
+                // Also add command Deny rule
+                let pattern = path.display().to_string();
+                policy.add_command_rule(CommandRule {
+                    pattern: pattern.clone(),
+                    action: RuleAction::Deny,
+                });
+
+                // Add canonicalized version to handle symlinks
+                if let Some(canonical_pattern) = canonicalize_pattern(&path) {
+                    let canonical_str = canonical_pattern.display().to_string();
+                    if canonical_str != pattern {
+                        policy.add_command_rule(CommandRule {
+                            pattern: canonical_str,
+                            action: RuleAction::Deny,
+                        });
+                    }
+                }
+            }
+            Directive::NoBlacklist(path) => {
+                policy.remove_blacklist(&path);
             }
             Directive::NoSafeDevDefaults => {
                 // Disable automatic whitelisting of safe /dev files
@@ -246,10 +253,30 @@ impl ProfileParser {
                 });
             }
             Directive::NoExec(path) => {
+                // Add filesystem NoExec rule
                 policy.add_filesystem_rule(FilesystemRule::NoExec {
-                    path,
+                    path: path.clone(),
                     recursive: true,
                 });
+
+                // Add command Deny rule at the beginning for high priority
+                // This ensures noexec takes precedence over whitelist rules
+                let pattern = path.display().to_string();
+                policy.command_rules.insert(0, CommandRule {
+                    pattern: pattern.clone(),
+                    action: RuleAction::Deny,
+                });
+
+                // Add canonicalized version at the beginning too
+                if let Some(canonical_pattern) = canonicalize_pattern(&path) {
+                    let canonical_str = canonical_pattern.display().to_string();
+                    if canonical_str != pattern {
+                        policy.command_rules.insert(0, CommandRule {
+                            pattern: canonical_str,
+                            action: RuleAction::Deny,
+                        });
+                    }
+                }
             }
             Directive::Include(included_policy) => {
                 // Merge included policy into current policy
@@ -274,21 +301,10 @@ enum Directive {
     Whitelist(PathBuf),
     Blacklist(PathBuf),
     NoBlacklist(PathBuf),
-    WhitelistExec(PathBuf),
     NoSafeDevDefaults,
     ReadOnly(PathBuf),
     NoExec(PathBuf),
     Include(Policy),
-}
-
-/// Check if a path looks like a command path.
-fn is_command_path(path: &Path) -> bool {
-    let path_str = path.to_string_lossy();
-    path_str.starts_with("/bin/")
-        || path_str.starts_with("/usr/bin/")
-        || path_str.starts_with("/usr/local/bin/")
-        || path_str.starts_with("/sbin/")
-        || path_str.starts_with("/usr/sbin/")
 }
 
 /// Try to canonicalize a glob pattern by canonicalizing its base path.
@@ -364,19 +380,31 @@ mod tests {
         let mut parser = ProfileParser::new();
         let policy = parser.parse_file(file.path()).unwrap();
 
-        // Should create a command rule instead of filesystem rule
-        assert_eq!(policy.command_rules.len(), 1);
+        // Should create both filesystem and command rules
+        assert_eq!(policy.filesystem_rules.len(), 1);
+        assert!(matches!(
+            &policy.filesystem_rules[0],
+            FilesystemRule::Blacklist { .. }
+        ));
+        assert!(!policy.command_rules.is_empty());
         assert_eq!(policy.command_rules[0].pattern, "/usr/bin/curl");
         assert_eq!(policy.command_rules[0].action, RuleAction::Deny);
     }
 
     #[test]
-    fn test_parse_whitelist_exec() {
+    fn test_parse_whitelist_with_command() {
         let mut file = NamedTempFile::new().unwrap();
-        writeln!(file, "whitelist_exec /tmp/bin/*").unwrap();
+        writeln!(file, "whitelist /tmp/bin/*").unwrap();
 
         let mut parser = ProfileParser::new();
         let policy = parser.parse_file(file.path()).unwrap();
+
+        // Should create both filesystem and command rules
+        assert_eq!(policy.filesystem_rules.len(), 1);
+        assert!(matches!(
+            &policy.filesystem_rules[0],
+            FilesystemRule::Whitelist { .. }
+        ));
 
         // Should create at least one command rule (may create 2 if canonicalization differs)
         assert!(!policy.command_rules.is_empty());
@@ -428,15 +456,18 @@ mod tests {
     }
 
     #[test]
-    fn test_whitelist_exec_canonicalization() {
+    fn test_whitelist_canonicalization() {
         // Create /tmp/bin if it doesn't exist
         let _ = std::fs::create_dir_all("/tmp/bin");
 
         let mut file = NamedTempFile::new().unwrap();
-        writeln!(file, "whitelist_exec /tmp/bin/*").unwrap();
+        writeln!(file, "whitelist /tmp/bin/*").unwrap();
 
         let mut parser = ProfileParser::new();
         let policy = parser.parse_file(file.path()).unwrap();
+
+        // Should create filesystem rule
+        assert_eq!(policy.filesystem_rules.len(), 1);
 
         // Should create at least one command rule
         assert!(!policy.command_rules.is_empty());
@@ -451,6 +482,35 @@ mod tests {
             if patterns.len() > 1 {
                 assert!(patterns.iter().any(|p| p.contains("/private/tmp/bin/")));
             }
+        }
+    }
+
+    #[test]
+    fn test_parse_noexec() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "noexec /tmp").unwrap();
+
+        let mut parser = ProfileParser::new();
+        let policy = parser.parse_file(file.path()).unwrap();
+
+        // Should create filesystem NoExec rule
+        assert_eq!(policy.filesystem_rules.len(), 1);
+        assert!(matches!(
+            &policy.filesystem_rules[0],
+            FilesystemRule::NoExec { .. }
+        ));
+
+        // Should also create command Deny rule(s)
+        // May create 2 rules on macOS due to canonicalization (/tmp -> /private/tmp)
+        assert!(!policy.command_rules.is_empty());
+
+        // Check that at least one rule matches the original pattern or canonical form
+        let patterns: Vec<&str> = policy.command_rules.iter().map(|r| r.pattern.as_str()).collect();
+        assert!(patterns.contains(&"/tmp") || patterns.contains(&"/private/tmp"));
+
+        // All rules should be Deny
+        for rule in &policy.command_rules {
+            assert_eq!(rule.action, RuleAction::Deny);
         }
     }
 }

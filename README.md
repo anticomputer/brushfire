@@ -21,12 +21,20 @@ Brushfire adds shell-level policies controlling:
 ## Building
 
 ```bash
-# Standard build with policy support
-cargo build --features policy
+# Development build (recommended)
+./build.sh dev
 
-# Build with webhook observability (automatically enables policy)
-cargo build --features policy-webhook
+# Release build
+./build.sh release
+
+# Release with embedded wrappers (for distribution)
+./build.sh release-embedded
+
+# With webhook support
+./build.sh dev --webhook
 ```
+
+Run `./build.sh help` for more build options.
 
 ## Quick Start
 
@@ -42,10 +50,11 @@ brush --profile my.profile --wrap-coreutils -c 'cat /etc/passwd'
 
 ```bash
 # Only allow execution from /tmp/safe-bin
-whitelist_exec /tmp/safe-bin/*
+whitelist /tmp/safe-bin/*
 
-# Only allow file access to workspace
+# Only allow file access to workspace (but not execution)
 whitelist /home/user/workspace
+noexec /home/user/workspace
 
 # Default deny all other access
 ```

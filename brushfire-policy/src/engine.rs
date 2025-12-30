@@ -47,7 +47,7 @@ impl PolicyEngine {
             DefaultPolicy::AllowAll
         };
 
-        // If there are any whitelist_exec command rules, switch to restrictive mode for commands
+        // If there are any whitelist command rules, switch to restrictive mode for commands
         let has_allow_rules = policy
             .command_rules
             .iter()
@@ -434,7 +434,7 @@ impl PolicyEngine {
 
     /// Check if command execution is in default-deny mode.
     ///
-    /// Returns true if whitelist_exec rules are active and commands are
+    /// Returns true if whitelist rules are active and commands are
     /// denied by default unless explicitly allowed.
     #[must_use]
     pub fn is_command_default_deny(&self) -> bool {

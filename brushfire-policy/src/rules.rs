@@ -108,9 +108,17 @@ impl Policy {
     }
 
     /// Remove blacklist rules for a path (noblacklist directive).
+    /// This removes both filesystem blacklist rules and command Deny rules.
     pub fn remove_blacklist(&mut self, path: &PathBuf) {
+        // Remove filesystem blacklist rules
         self.filesystem_rules.retain(|rule| {
             !matches!(rule, FilesystemRule::Blacklist { path: rule_path, .. } if rule_path == path)
+        });
+
+        // Remove command Deny rules for this path
+        let pattern = path.display().to_string();
+        self.command_rules.retain(|rule| {
+            !(rule.pattern == pattern && rule.action == RuleAction::Deny)
         });
     }
 }

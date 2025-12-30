@@ -111,7 +111,7 @@ pub fn auto_blacklist_utilities(policy: &mut PolicyEngine) -> Result<(), std::io
 
 /// Auto-whitelist wrapper directory when in default-deny mode.
 ///
-/// When `whitelist_exec` rules are in use (default-deny for commands), wrapped
+/// When `whitelist` rules are in use (default-deny for commands), wrapped
 /// coreutils need to be explicitly allowed. This function adds the wrapper
 /// directory to the allowed command patterns and whitelists it for file access.
 ///
@@ -138,7 +138,7 @@ pub fn auto_whitelist_wrappers(
     }
 
     // Print security warning to stderr
-    eprintln!("\n[WARNING] --wrap-coreutils enabled with whitelist_exec rules:");
+    eprintln!("\n[WARNING] --wrap-coreutils enabled with whitelist rules:");
     eprintln!("[WARNING] Wrapped coreutils will be automatically allowed.");
     eprintln!("[WARNING] This may enable policy bypasses or privilege escalation.");
     eprintln!("[WARNING] In strict sandboxes, consider using explicit command allow rules.\n");
