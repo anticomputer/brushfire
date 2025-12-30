@@ -14,7 +14,15 @@ fn main() {
     };
 
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let file_args = parse_args(&FIND_SCHEMA, &args);
+    let mut file_args = parse_args(&FIND_SCHEMA, &args);
+
+    // If no file arguments, find defaults to current directory
+    if file_args.is_empty() {
+        file_args.push(brushfire_wrappers::schemas::FileArg::new(
+            ".".to_string(),
+            brushfire_policy::FileAccessMode::Read,
+        ));
+    }
 
     for file_arg in file_args {
         let path = Path::new(&file_arg.path);

@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+#
+# strict-bash - A sandboxed bash wrapper using brushfire
+#
+# This script demonstrates using brushfire as a drop-in bash replacement
+# with strict policy enforcement for shell operations and command spawning.
+#
+# Usage:
+#   ./strict-bash -c 'command'
+#   ./strict-bash script.sh
+#   ./strict-bash  # interactive shell
+#
+# Installation:
+#   # Add to shell config:
+#   alias sbash='/path/to/examples/strict-bash'
+#
+#   # Or symlink to PATH:
+#   ln -s /path/to/examples/strict-bash ~/bin/sbash
+#
+# Environment Variables:
+#   BRUSH_BIN                  - Path to brush binary (default: ../target/debug/brush)
+#   POLICY_PROFILE             - Path to policy profile (default: ./strict-bash.profile)
+#   POLICY_WEBHOOK             - Webhook URL for observability (optional)
+#   SHOW_COREUTILS_WARNING     - Set to '1' to show security warning (default: suppressed)
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Locate brush binary
+BRUSH_BIN="${BRUSH_BIN:-${SCRIPT_DIR}/../target/debug/brush}"
+if [[ ! -x "$BRUSH_BIN" ]]; then
+    echo "Error: brush binary not found at: $BRUSH_BIN" >&2
+    echo "Build brushfire first: ./build.sh dev" >&2
+    echo "Or set BRUSH_BIN environment variable" >&2
+    exit 1
+fi
+
+# Locate policy profile
+POLICY_PROFILE="${POLICY_PROFILE:-${SCRIPT_DIR}/strict-bash.profile}"
+if [[ ! -f "$POLICY_PROFILE" ]]; then
+    echo "Error: Policy profile not found at: $POLICY_PROFILE" >&2
+    echo "Or set POLICY_PROFILE environment variable" >&2
+    exit 1
+fi
+
+# Build brush arguments
+BRUSH_ARGS=(
+    --profile "$POLICY_PROFILE"
+    --wrap-coreutils  # Enable coreutils wrappers for better file access control
+)
+
+# Suppress warning by default (set SHOW_COREUTILS_WARNING=1 to enable)
+if [[ "${SHOW_COREUTILS_WARNING:-0}" != "1" ]]; then
+    BRUSH_ARGS+=(--suppress-coreutils-warning)
+fi
+
+# Optional webhook for observability
+if [[ -n "${POLICY_WEBHOOK:-}" ]]; then
+    BRUSH_ARGS+=(--policy-webhook "$POLICY_WEBHOOK")
+fi
+
+# Execute brush with policy enforcement
+exec "$BRUSH_BIN" "${BRUSH_ARGS[@]}" "$@"

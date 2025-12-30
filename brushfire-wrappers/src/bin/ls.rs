@@ -16,7 +16,15 @@ fn main() {
 
     // Parse arguments to extract file paths
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let file_args = parse_args(&LS_SCHEMA, &args);
+    let mut file_args = parse_args(&LS_SCHEMA, &args);
+
+    // If no file arguments, ls defaults to current directory
+    if file_args.is_empty() {
+        file_args.push(brushfire_wrappers::schemas::FileArg::new(
+            ".".to_string(),
+            brushfire_policy::FileAccessMode::Read,
+        ));
+    }
 
     // Check policy for each file
     for file_arg in file_args {
