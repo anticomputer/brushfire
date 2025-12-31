@@ -25,6 +25,16 @@ impl builtins::Command for PrintfCommand {
         context: brush_core::ExecutionContext<'_>,
     ) -> Result<ExecutionResult, Self::Error> {
         if let Some(variable_name) = &self.output_variable {
+            // Block modification of BRUSHFIRE_* environment variables
+            if variable_name.starts_with("BRUSHFIRE_") {
+                writeln!(
+                    context.stderr(),
+                    "printf: {}: cannot modify BRUSHFIRE_* environment variables",
+                    variable_name
+                )?;
+                return Ok(brush_core::ExecutionExitCode::InvalidUsage.into());
+            }
+
             // Format to a u8 vector.
             let mut result: Vec<u8> = vec![];
             format(self.format_and_args.as_slice(), &mut result)?;

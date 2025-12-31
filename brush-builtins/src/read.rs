@@ -1,10 +1,9 @@
 use clap::Parser;
 use itertools::Itertools;
 use std::collections::VecDeque;
+use std::io::{Read, Write};
 
 use brush_core::{ErrorKind, builtins, env, error, variables};
-
-use std::io::Read;
 
 /// Parse standard input.
 #[derive(Parser)]
@@ -105,6 +104,15 @@ impl builtins::Command for ReadCommand {
 
         // If -a was specified, then place the fields as elements into the array.
         if let Some(array_variable) = &self.array_variable {
+            // Block modification of BRUSHFIRE_* environment variables
+            if array_variable.starts_with("BRUSHFIRE_") {
+                writeln!(
+                    context.stderr(),
+                    "read: {}: cannot modify BRUSHFIRE_* environment variables",
+                    array_variable
+                )?;
+                return Ok(brush_core::ExecutionExitCode::InvalidUsage.into());
+            }
             let literal_fields = if let Some(input_line) = input_line {
                 let fields: VecDeque<_> = split_line_by_ifs(
                     ifs.as_ref(),
@@ -136,6 +144,16 @@ impl builtins::Command for ReadCommand {
             };
 
             for (i, name) in self.variable_names.iter().enumerate() {
+                // Block modification of BRUSHFIRE_* environment variables
+                if name.starts_with("BRUSHFIRE_") {
+                    writeln!(
+                        context.stderr(),
+                        "read: {}: cannot modify BRUSHFIRE_* environment variables",
+                        name
+                    )?;
+                    return Ok(brush_core::ExecutionExitCode::InvalidUsage.into());
+                }
+
                 if fields.is_empty() {
                     // Ensure the var is empty.
                     context.shell.env.update_or_add(

@@ -262,6 +262,17 @@ impl DeclareCommand {
             return Ok(true);
         }
 
+        // Block modification of BRUSHFIRE_* environment variables
+        if name.starts_with("BRUSHFIRE_") {
+            writeln!(
+                context.stderr(),
+                "{}: {}: cannot modify BRUSHFIRE_* environment variables",
+                context.command_name,
+                name
+            )?;
+            return Ok(false);
+        }
+
         // Make sure it's a valid name.
         if !env::valid_variable_name(name.as_str()) {
             writeln!(
