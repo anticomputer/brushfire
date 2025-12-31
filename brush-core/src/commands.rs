@@ -76,14 +76,22 @@ pub fn check_command_policy(
 
         let path = Path::new(arg);
 
+        // If the path is relative, resolve it against the shell's working directory
+        // before canonicalization to avoid using the process CWD
+        let resolved_path = if path.is_relative() {
+            cwd.join(path)
+        } else {
+            path.to_path_buf()
+        };
+
         // Try to canonicalize the path (handles both existing and non-existing files)
-        let canonical = if let Ok(c) = path.canonicalize() {
+        let canonical = if let Ok(c) = resolved_path.canonicalize() {
             // File exists, use canonical path
             c
-        } else if let Some(parent) = path.parent() {
+        } else if let Some(parent) = resolved_path.parent() {
             // File doesn't exist, try to canonicalize parent + filename
             if let Ok(canonical_parent) = parent.canonicalize() {
-                if let Some(filename) = path.file_name() {
+                if let Some(filename) = resolved_path.file_name() {
                     canonical_parent.join(filename)
                 } else {
                     continue; // Skip if no filename
