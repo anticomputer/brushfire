@@ -102,23 +102,16 @@ pub fn check_command_policy(
             path.to_path_buf()
         };
 
-        // Try to canonicalize the path (handles both existing and non-existing files)
-        let canonical = if let Ok(c) = resolved_path.canonicalize() {
-            // File exists, use canonical path
-            c
-        } else if let Some(parent) = resolved_path.parent() {
-            // File doesn't exist, try to canonicalize parent + filename
-            if let Ok(canonical_parent) = parent.canonicalize() {
-                if let Some(filename) = resolved_path.file_name() {
-                    canonical_parent.join(filename)
-                } else {
-                    continue; // Skip if no filename
-                }
-            } else {
-                continue; // Skip if parent doesn't exist
-            }
-        } else {
-            continue; // Skip if it's not a valid path at all
+        // Only check policy if the file actually exists
+        // This avoids false positives on numeric arguments, URLs, etc.
+        if !resolved_path.exists() {
+            continue;
+        }
+
+        // Canonicalize the existing path
+        let canonical = match resolved_path.canonicalize() {
+            Ok(c) => c,
+            Err(_) => continue, // Skip if canonicalization fails
         };
 
         // Check the canonicalized path against policy (use Write mode conservatively)

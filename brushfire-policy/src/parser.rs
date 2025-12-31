@@ -140,14 +140,11 @@ impl ProfileParser {
             }
             "prompt" => {
                 // Extract everything after "prompt " as the message
+                // Empty prompts are allowed for blank lines in the output
                 let message = line.strip_prefix("prompt")
                     .ok_or_else(|| ParseError::InvalidFormat("Invalid prompt directive".to_string()))?
                     .trim()
                     .to_string();
-
-                if message.is_empty() {
-                    return Err(ParseError::InvalidFormat("Prompt message cannot be empty".to_string()));
-                }
 
                 Ok(Some(Directive::Prompt(message)))
             }
