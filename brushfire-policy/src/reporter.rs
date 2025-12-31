@@ -40,11 +40,11 @@ pub struct PolicyEvent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EventType {
-    /// File or directory access check
-    FileAccessCheck,
+    /// File read/write access check
+    FileAccess,
 
-    /// Command execution check
-    CommandSpawnCheck,
+    /// Command or file execution check
+    Execution,
 
     /// Network access check (future)
     NetworkCheck,
@@ -56,14 +56,18 @@ pub struct ActionContext {
     /// Resource being accessed (file path, command path, etc.)
     pub resource: String,
 
-    /// Access mode or operation type
-    pub mode: String,
+    /// Operation type: "read", "write", "execute"
+    pub operation: String,
+
+    /// Resource type: "file" or "command"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource_type: Option<String>,
 
     /// Command that triggered the check (if available)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
 
-    /// Command line arguments (for command spawn checks)
+    /// Command line arguments (for execution checks)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub args: Option<Vec<String>>,
 
@@ -222,24 +226,27 @@ impl PolicyReporter for WebhookReporter {
 
 /// Helper to create policy events
 impl PolicyEvent {
-    /// Create a new file access check event
-    pub fn file_access_check(
+    /// Create a new file access check event (read or write)
+    pub fn file_access(
         resource: PathBuf,
         mode: FileAccessMode,
         result: CheckResult,
         reason: String,
     ) -> Self {
+        let operation = match mode {
+            FileAccessMode::Read => "read",
+            FileAccessMode::Write => "write",
+            FileAccessMode::Execute => "execute", // Should not be used for FileAccess events
+        };
+
         Self {
             timestamp: chrono::Utc::now().to_rfc3339(),
             session_id: String::new(), // Will be filled by reporter
-            event_type: EventType::FileAccessCheck,
+            event_type: EventType::FileAccess,
             action: ActionContext {
                 resource: resource.display().to_string(),
-                mode: match mode {
-                    FileAccessMode::Read => "read".to_string(),
-                    FileAccessMode::Write => "write".to_string(),
-                    FileAccessMode::Execute => "execute".to_string(),
-                },
+                operation: operation.to_string(),
+                resource_type: Some("file".to_string()),
                 command: std::env::args().collect::<Vec<_>>().get(0).cloned(),
                 args: None,
                 cwd: std::env::current_dir()
@@ -252,8 +259,34 @@ impl PolicyEvent {
         }
     }
 
-    /// Create a new command spawn check event
-    pub fn command_spawn_check(
+    /// Create a new file execution check event
+    pub fn file_execution(
+        resource: PathBuf,
+        result: CheckResult,
+        reason: String,
+    ) -> Self {
+        Self {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            session_id: String::new(),
+            event_type: EventType::Execution,
+            action: ActionContext {
+                resource: resource.display().to_string(),
+                operation: "execute".to_string(),
+                resource_type: Some("file".to_string()),
+                command: std::env::args().collect::<Vec<_>>().get(0).cloned(),
+                args: None,
+                cwd: std::env::current_dir()
+                    .ok()
+                    .map(|p| p.display().to_string()),
+            },
+            result,
+            reason,
+            policy_profile: None,
+        }
+    }
+
+    /// Create a new command execution check event
+    pub fn command_execution(
         command: PathBuf,
         args: Option<Vec<String>>,
         result: CheckResult,
@@ -262,10 +295,11 @@ impl PolicyEvent {
         Self {
             timestamp: chrono::Utc::now().to_rfc3339(),
             session_id: String::new(),
-            event_type: EventType::CommandSpawnCheck,
+            event_type: EventType::Execution,
             action: ActionContext {
                 resource: command.display().to_string(),
-                mode: "execute".to_string(),
+                operation: "execute".to_string(),
+                resource_type: Some("command".to_string()),
                 command: Some(command.display().to_string()),
                 args,
                 cwd: std::env::current_dir()

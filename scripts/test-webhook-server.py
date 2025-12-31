@@ -17,9 +17,13 @@ class WebhookHandler(BaseHTTPRequestHandler):
             print(f"\n[{timestamp}] Policy Event Received:")
             print(f"  Type: {event.get('event_type')}")
             print(f"  Resource: {event['action']['resource']}")
-            print(f"  Mode: {event['action']['mode']}")
+            print(f"  Operation: {event['action']['operation']}")
 
-            # Display args for command spawn checks
+            # Display resource type (file or command)
+            if 'resource_type' in event['action']:
+                print(f"  Resource Type: {event['action']['resource_type']}")
+
+            # Display args for execution events
             if 'args' in event['action'] and event['action']['args']:
                 print(f"  Args: {' '.join(event['action']['args'])}")
 

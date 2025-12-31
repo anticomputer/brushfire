@@ -144,12 +144,19 @@ impl PolicyEngine {
                 if self.path_matches(&canonical_path, rule_path, *recursive) {
                     #[cfg(feature = "webhook")]
                     if let Some(ref reporter) = self.reporter {
-                        let event = PolicyEvent::file_access_check(
-                            canonical_path.clone(),
-                            mode,
-                            CheckResult::Denied,
-                            "file_blacklisted".to_string(),
-                        );
+                        let event = match mode {
+                            FileAccessMode::Execute => PolicyEvent::file_execution(
+                                canonical_path.clone(),
+                                CheckResult::Denied,
+                                "file_blacklisted".to_string(),
+                            ),
+                            _ => PolicyEvent::file_access(
+                                canonical_path.clone(),
+                                mode,
+                                CheckResult::Denied,
+                                "file_blacklisted".to_string(),
+                            ),
+                        };
                         reporter.report(&event);
                     }
 
@@ -211,12 +218,19 @@ impl PolicyEngine {
             if !allowed {
                 #[cfg(feature = "webhook")]
                 if let Some(ref reporter) = self.reporter {
-                    let event = PolicyEvent::file_access_check(
-                        canonical_path.clone(),
-                        mode,
-                        CheckResult::Denied,
-                        "file_not_whitelisted".to_string(),
-                    );
+                    let event = match mode {
+                        FileAccessMode::Execute => PolicyEvent::file_execution(
+                            canonical_path.clone(),
+                            CheckResult::Denied,
+                            "file_not_whitelisted".to_string(),
+                        ),
+                        _ => PolicyEvent::file_access(
+                            canonical_path.clone(),
+                            mode,
+                            CheckResult::Denied,
+                            "file_not_whitelisted".to_string(),
+                        ),
+                    };
                     reporter.report(&event);
                 }
 
@@ -229,12 +243,19 @@ impl PolicyEngine {
         // Report allowed access
         #[cfg(feature = "webhook")]
         if let Some(ref reporter) = self.reporter {
-            let event = PolicyEvent::file_access_check(
-                canonical_path,
-                mode,
-                CheckResult::Allowed,
-                "policy_check_passed".to_string(),
-            );
+            let event = match mode {
+                FileAccessMode::Execute => PolicyEvent::file_execution(
+                    canonical_path,
+                    CheckResult::Allowed,
+                    "policy_check_passed".to_string(),
+                ),
+                _ => PolicyEvent::file_access(
+                    canonical_path,
+                    mode,
+                    CheckResult::Allowed,
+                    "policy_check_passed".to_string(),
+                ),
+            };
             reporter.report(&event);
         }
 
@@ -255,7 +276,7 @@ impl PolicyEngine {
             if rule.action == RuleAction::Deny && self.command_matches(&canonical_path, &rule.pattern) {
                 #[cfg(feature = "webhook")]
                 if let Some(ref reporter) = self.reporter {
-                    let event = PolicyEvent::command_spawn_check(
+                    let event = PolicyEvent::command_execution(
                         canonical_path.clone(),
                         args.clone(),
                         CheckResult::Denied,
@@ -275,7 +296,7 @@ impl PolicyEngine {
             if rule.action == RuleAction::Allow && self.command_matches(&canonical_path, &rule.pattern) {
                 #[cfg(feature = "webhook")]
                 if let Some(ref reporter) = self.reporter {
-                    let event = PolicyEvent::command_spawn_check(
+                    let event = PolicyEvent::command_execution(
                         canonical_path.clone(),
                         args.clone(),
                         CheckResult::Allowed,
@@ -292,7 +313,7 @@ impl PolicyEngine {
         if self.default_command_policy == DefaultPolicy::DenyAll {
             #[cfg(feature = "webhook")]
             if let Some(ref reporter) = self.reporter {
-                let event = PolicyEvent::command_spawn_check(
+                let event = PolicyEvent::command_execution(
                     canonical_path.clone(),
                     args.clone(),
                     CheckResult::Denied,
@@ -309,7 +330,7 @@ impl PolicyEngine {
         // Report allowed spawn (no matching rules, default allow mode)
         #[cfg(feature = "webhook")]
         if let Some(ref reporter) = self.reporter {
-            let event = PolicyEvent::command_spawn_check(
+            let event = PolicyEvent::command_execution(
                 canonical_path,
                 args,
                 CheckResult::Allowed,
