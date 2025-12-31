@@ -501,35 +501,80 @@ async fn instantiate_shell_from_args(
     #[cfg(feature = "experimental-builtins")]
     let shell = shell.experimental_builtins();
 
-    // Load policy if profile is specified (brushfire feature).
+    // Load policy if profile is specified or inherited (brushfire feature).
     #[cfg(feature = "policy")]
-    let shell = if let Some(ref profile_path) = args.profile {
-        let mut parser = brushfire_policy::ProfileParser::new();
-        let policy = parser.parse_file(profile_path).map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!("Failed to load policy profile '{}': {}", profile_path.display(), e),
-            )
-        })?;
-        let policy_engine = brushfire_policy::PolicyEngine::new(policy);
-
-        // Set up webhook reporter if URL provided
-        #[cfg(feature = "policy-webhook")]
-        let policy_engine = if let Some(ref webhook_url) = args.policy_webhook {
-            let session_id = uuid::Uuid::new_v4().to_string();
-            let reporter = brushfire_policy::WebhookReporter::new(
-                webhook_url.clone(),
-                session_id,
-            );
-            policy_engine.with_reporter(std::sync::Arc::new(reporter))
+    let shell = {
+        // Check for inherited policy content first
+        let (policy_opt, profile_content_opt) = if let Ok(inherited_content) = std::env::var("BRUSHFIRE_POLICY_CONTENT") {
+            // Parse inherited policy from parent process
+            let mut parser = brushfire_policy::ProfileParser::new();
+            let policy = parser.parse_content(&inherited_content, std::path::Path::new("<inherited>")).map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("Failed to parse inherited policy: {}", e),
+                )
+            })?;
+            (Some(policy), Some(inherited_content))
+        } else if let Some(ref profile_path) = args.profile {
+            // Load policy from file
+            let content = std::fs::read_to_string(profile_path).map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("Failed to read policy profile '{}': {}", profile_path.display(), e),
+                )
+            })?;
+            let mut parser = brushfire_policy::ProfileParser::new();
+            let policy = parser.parse_content(&content, profile_path).map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    format!("Failed to parse policy profile '{}': {}", profile_path.display(), e),
+                )
+            })?;
+            (Some(policy), Some(content))
         } else {
-            policy_engine
+            (None, None)
         };
 
-        let policy_engine = std::sync::Arc::new(policy_engine);
-        shell.maybe_policy_engine(Some(policy_engine))
-    } else {
-        shell.maybe_policy_engine(None)
+        if let Some(policy) = policy_opt {
+            let policy_engine = brushfire_policy::PolicyEngine::new(policy);
+
+            // Check for inherited or provided webhook URL
+            #[cfg(feature = "policy-webhook")]
+            let policy_engine = {
+                let webhook_url = std::env::var("BRUSHFIRE_WEBHOOK_URL").ok()
+                    .or_else(|| args.policy_webhook.clone());
+
+                if let Some(ref url) = webhook_url {
+                    let session_id = uuid::Uuid::new_v4().to_string();
+                    let reporter = brushfire_policy::WebhookReporter::new(
+                        url.clone(),
+                        session_id,
+                    );
+                    policy_engine.with_reporter(std::sync::Arc::new(reporter))
+                } else {
+                    policy_engine
+                }
+            };
+
+            let policy_engine = std::sync::Arc::new(policy_engine);
+
+            // Store policy content and webhook URL for child processes
+            // Safety: We're setting env vars early in shell startup, before any threads are spawned
+            if let Some(content) = profile_content_opt {
+                unsafe { std::env::set_var("BRUSHFIRE_POLICY_CONTENT", content); }
+            }
+            #[cfg(feature = "policy-webhook")]
+            if let Ok(url) = std::env::var("BRUSHFIRE_WEBHOOK_URL") {
+                // Already set, keep it
+                unsafe { std::env::set_var("BRUSHFIRE_WEBHOOK_URL", url); }
+            } else if let Some(ref url) = args.policy_webhook {
+                unsafe { std::env::set_var("BRUSHFIRE_WEBHOOK_URL", url); }
+            }
+
+            shell.maybe_policy_engine(Some(policy_engine))
+        } else {
+            shell.maybe_policy_engine(None)
+        }
     };
 
     // Build the shell.

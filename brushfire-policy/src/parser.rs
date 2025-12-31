@@ -40,6 +40,25 @@ impl ProfileParser {
         // Read the file
         let content = fs::read_to_string(path)?;
 
+        self.parse_content(&content, path)
+    }
+
+    /// Parse profile content from a string.
+    ///
+    /// # Arguments
+    ///
+    /// * `content` - The profile content to parse
+    /// * `current_file` - Path used for resolving relative includes
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ParseError`] if the content cannot be parsed.
+    pub fn parse_content(&mut self, content: &str, current_file: &Path) -> Result<Policy, ParseError> {
+        // Check include depth
+        if self.include_depth >= MAX_INCLUDE_DEPTH {
+            return Err(ParseError::MaxIncludeDepth(MAX_INCLUDE_DEPTH));
+        }
+
         // Parse the content
         let mut policy = Policy::new();
         policy.macros = self.macros.vars.clone();
@@ -61,7 +80,7 @@ impl ProfileParser {
             }
 
             // Parse the directive
-            match self.parse_directive(line, path) {
+            match self.parse_directive(line, current_file) {
                 Ok(Some(directive)) => self.apply_directive(&mut policy, directive)?,
                 Ok(None) => {} // Directive handled internally (e.g., include)
                 Err(e) => {
