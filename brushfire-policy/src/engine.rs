@@ -250,40 +250,41 @@ impl PolicyEngine {
     pub fn check_process_spawn(&self, command_path: &Path, args: Option<Vec<String>>) -> Result<(), PolicyViolation> {
         let canonical_path = self.canonicalize_path(command_path)?;
 
+        // Check Deny rules first (blacklist takes precedence)
         for rule in &self.policy.command_rules {
-            if self.command_matches(&canonical_path, &rule.pattern) {
-                match rule.action {
-                    RuleAction::Deny => {
-                        #[cfg(feature = "webhook")]
-                        if let Some(ref reporter) = self.reporter {
-                            let event = PolicyEvent::command_spawn_check(
-                                canonical_path.clone(),
-                                args.clone(),
-                                CheckResult::Denied,
-                                "command_blacklisted".to_string(),
-                            );
-                            reporter.report(&event);
-                        }
-
-                        return Err(PolicyViolation::CommandBlocked(
-                            canonical_path.display().to_string(),
-                        ));
-                    }
-                    RuleAction::Allow => {
-                        #[cfg(feature = "webhook")]
-                        if let Some(ref reporter) = self.reporter {
-                            let event = PolicyEvent::command_spawn_check(
-                                canonical_path.clone(),
-                                args.clone(),
-                                CheckResult::Allowed,
-                                "command_explicitly_allowed".to_string(),
-                            );
-                            reporter.report(&event);
-                        }
-
-                        return Ok(());
-                    }
+            if rule.action == RuleAction::Deny && self.command_matches(&canonical_path, &rule.pattern) {
+                #[cfg(feature = "webhook")]
+                if let Some(ref reporter) = self.reporter {
+                    let event = PolicyEvent::command_spawn_check(
+                        canonical_path.clone(),
+                        args.clone(),
+                        CheckResult::Denied,
+                        "command_blacklisted".to_string(),
+                    );
+                    reporter.report(&event);
                 }
+
+                return Err(PolicyViolation::CommandBlocked(
+                    canonical_path.display().to_string(),
+                ));
+            }
+        }
+
+        // Then check Allow rules (whitelist)
+        for rule in &self.policy.command_rules {
+            if rule.action == RuleAction::Allow && self.command_matches(&canonical_path, &rule.pattern) {
+                #[cfg(feature = "webhook")]
+                if let Some(ref reporter) = self.reporter {
+                    let event = PolicyEvent::command_spawn_check(
+                        canonical_path.clone(),
+                        args.clone(),
+                        CheckResult::Allowed,
+                        "command_explicitly_allowed".to_string(),
+                    );
+                    reporter.report(&event);
+                }
+
+                return Ok(());
             }
         }
 
