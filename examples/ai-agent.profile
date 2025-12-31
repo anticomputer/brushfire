@@ -28,6 +28,17 @@ prompt
 prompt Task: Help the user with code in /tmp/ai-workspace
 prompt ====================================
 
+# Allow shell initialization files for interactive shell
+whitelist ${HOME}/.bashrc
+whitelist ${HOME}/.bash_profile
+whitelist ${HOME}/.bash_login
+whitelist ${HOME}/.profile
+
+# Allow system-wide shell initialization
+whitelist /etc/profile
+whitelist /etc/bash.bashrc
+whitelist /etc/bashrc
+
 # Workspace directory (automatically canonicalized)
 whitelist /tmp/ai-workspace
 
