@@ -112,6 +112,12 @@ impl PolicyEngine {
         self
     }
 
+    /// Get the prompt messages to display at shell startup.
+    #[must_use]
+    pub fn prompts(&self) -> &[String] {
+        &self.policy.prompts
+    }
+
     /// Set the policy reporter for observability (mutable version).
     ///
     /// # Arguments

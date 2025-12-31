@@ -18,6 +18,9 @@ pub struct Policy {
     /// Whether to enable safe /dev defaults in restrictive mode.
     /// When true (default), common /dev files are auto-whitelisted in default-deny mode.
     pub enable_safe_dev_defaults: bool,
+    /// Prompt messages to display at shell startup.
+    /// Multiple prompt directives can be used to build up documentation in sections.
+    pub prompts: Vec<String>,
 }
 
 impl Default for Policy {
@@ -28,6 +31,7 @@ impl Default for Policy {
             cwd_checking_commands: HashSet::new(),
             macros: HashMap::new(),
             enable_safe_dev_defaults: true,
+            prompts: Vec::new(),
         }
     }
 }

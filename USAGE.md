@@ -135,6 +135,46 @@ $ ls /tmp/allowed-workspace  # ✓ Allowed - explicit path is whitelisted
 
 ## Special Directives
 
+### prompt
+
+Display informational messages at shell startup for interactive sessions. This directive can be repeated to build up multi-line banners or separate sections of documentation.
+
+```bash
+# Inform users/agents about shell constraints
+prompt WARNING: This shell is restricted by policy
+prompt Only 'brush script.sh' is allowed - bash/sh are blocked
+prompt
+prompt Available commands: ls, cat, grep, find
+prompt Allowed directories: /tmp/workspace, /home/user/data
+```
+
+**Behavior:**
+- Prompts are displayed only when the shell starts in interactive mode
+- Not shown for `-c` command execution or script files (prevents interference with expected output)
+- Multiple `prompt` directives are displayed in order, useful for organizing information by topic
+- Empty prompt lines can be used to add spacing in the banner
+
+**Use cases:**
+- Documenting policy constraints for AI agents
+- Providing usage instructions for sandboxed environments
+- Listing available tools and allowed paths
+- Warning users about restricted capabilities
+
+**Example for AI agents:**
+```bash
+# ai-agent.profile
+prompt === AI Agent Sandbox ===
+prompt
+prompt CRITICAL: Always use 'brush script.sh', NEVER use 'bash' or 'sh'
+prompt Those interpreters are blocked to maintain ACL coverage.
+prompt
+prompt Tools: ls, cat, grep, head, tail, wc, sort, uniq
+prompt Workspace: /tmp/agent-workspace (read/write)
+prompt Data: /data (read-only)
+prompt
+prompt All other shells and interpreters (python, perl, ruby) are blocked.
+```
+
 ### no-safe-dev-defaults
 
 Disable automatic whitelisting of `/dev/null`, `/dev/stdin`, etc. in default-deny mode.

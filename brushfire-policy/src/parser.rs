@@ -119,6 +119,19 @@ impl ProfileParser {
                 let path = self.parse_path(&parts[1..])?;
                 Ok(Some(Directive::CheckCwd(path)))
             }
+            "prompt" => {
+                // Extract everything after "prompt " as the message
+                let message = line.strip_prefix("prompt")
+                    .ok_or_else(|| ParseError::InvalidFormat("Invalid prompt directive".to_string()))?
+                    .trim()
+                    .to_string();
+
+                if message.is_empty() {
+                    return Err(ParseError::InvalidFormat("Prompt message cannot be empty".to_string()));
+                }
+
+                Ok(Some(Directive::Prompt(message)))
+            }
             "include" => {
                 let include_path = self.parse_include_path(&parts[1..], current_file)?;
                 self.include_depth += 1;
@@ -291,6 +304,11 @@ impl ProfileParser {
                 policy.filesystem_rules.extend(included_policy.filesystem_rules);
                 policy.command_rules.extend(included_policy.command_rules);
                 policy.cwd_checking_commands.extend(included_policy.cwd_checking_commands);
+                policy.prompts.extend(included_policy.prompts);
+            }
+            Directive::Prompt(message) => {
+                // Add prompt message to the policy
+                policy.prompts.push(message);
             }
         }
 
@@ -315,6 +333,7 @@ enum Directive {
     NoExec(PathBuf),
     CheckCwd(PathBuf),
     Include(Policy),
+    Prompt(String),
 }
 
 /// Try to canonicalize a glob pattern by canonicalizing its base path.

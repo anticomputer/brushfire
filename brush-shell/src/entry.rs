@@ -230,6 +230,27 @@ const fn will_run_interactively(args: &CommandLineArgs) -> bool {
     }
 }
 
+/// Display policy prompts as a banner for interactive sessions.
+#[cfg(feature = "policy")]
+async fn display_policy_prompts(shell_ref: &brush_interactive::ShellRef) {
+    let shell = shell_ref.lock().await;
+    if let Some(ref policy_engine) = shell.policy {
+        let prompts = policy_engine.prompts();
+        if !prompts.is_empty() {
+            println!();
+            for prompt in prompts {
+                println!("{}", prompt);
+            }
+            println!();
+        }
+    }
+}
+
+#[cfg(not(feature = "policy"))]
+async fn display_policy_prompts(_shell_ref: &brush_interactive::ShellRef) {
+    // No-op when policy feature is disabled
+}
+
 /// Runs the shell according to the provided command-line arguments.
 /// Also responsible for loading profiles and rc files as appropriate.
 ///
@@ -265,6 +286,9 @@ async fn run_in_shell(
     // args) passed on the command line via positional arguments, then we copy over the
     // parameters but do *not* execute it.
     } else if args.read_commands_from_stdin {
+        // Display policy prompts for interactive session
+        display_policy_prompts(shell_ref).await;
+
         let interactive_options = ui_options.into();
         brush_interactive::InteractiveShell::new(shell_ref, input_backend, &interactive_options)?
             .run_interactively()
@@ -285,6 +309,9 @@ async fn run_in_shell(
     // If we got down here, then we don't have any commands to run. We'll be reading
     // them in from stdin one way or the other.
     } else {
+        // Display policy prompts for interactive session
+        display_policy_prompts(shell_ref).await;
+
         let interactive_options = ui_options.into();
         brush_interactive::InteractiveShell::new(shell_ref, input_backend, &interactive_options)?
             .run_interactively()
