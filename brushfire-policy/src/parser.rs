@@ -115,6 +115,10 @@ impl ProfileParser {
                 let path = self.parse_path(&parts[1..])?;
                 Ok(Some(Directive::NoExec(path)))
             }
+            "check-cwd" => {
+                let path = self.parse_path(&parts[1..])?;
+                Ok(Some(Directive::CheckCwd(path)))
+            }
             "include" => {
                 let include_path = self.parse_include_path(&parts[1..], current_file)?;
                 self.include_depth += 1;
@@ -278,10 +282,15 @@ impl ProfileParser {
                     }
                 }
             }
+            Directive::CheckCwd(path) => {
+                // Register command for CWD checking
+                policy.add_cwd_checking_command(&path);
+            }
             Directive::Include(included_policy) => {
                 // Merge included policy into current policy
                 policy.filesystem_rules.extend(included_policy.filesystem_rules);
                 policy.command_rules.extend(included_policy.command_rules);
+                policy.cwd_checking_commands.extend(included_policy.cwd_checking_commands);
             }
         }
 
@@ -304,6 +313,7 @@ enum Directive {
     NoSafeDevDefaults,
     ReadOnly(PathBuf),
     NoExec(PathBuf),
+    CheckCwd(PathBuf),
     Include(Policy),
 }
 
@@ -512,5 +522,25 @@ mod tests {
         for rule in &policy.command_rules {
             assert_eq!(rule.action, RuleAction::Deny);
         }
+    }
+
+    #[test]
+    fn test_parse_check_cwd() {
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "check-cwd /bin/ls").unwrap();
+        writeln!(file, "check-cwd /usr/bin/find").unwrap();
+
+        let mut parser = ProfileParser::new();
+        let policy = parser.parse_file(file.path()).unwrap();
+
+        // Should have CWD checking commands registered
+        assert!(!policy.cwd_checking_commands.is_empty());
+
+        // Check that commands are registered (may include canonical forms)
+        let has_ls = policy.cwd_checking_commands.iter().any(|c| c.contains("ls"));
+        let has_find = policy.cwd_checking_commands.iter().any(|c| c.contains("find"));
+
+        assert!(has_ls, "ls should be registered for CWD checking");
+        assert!(has_find, "find should be registered for CWD checking");
     }
 }

@@ -432,6 +432,20 @@ impl PolicyEngine {
     pub fn is_command_default_deny(&self) -> bool {
         self.default_command_policy == DefaultPolicy::DenyAll
     }
+
+    /// Check if a command requires CWD checking when invoked without path arguments.
+    ///
+    /// # Arguments
+    ///
+    /// * `command_path` - Path to the command executable
+    ///
+    /// # Returns
+    ///
+    /// `true` if the command requires CWD checking, `false` otherwise.
+    #[must_use]
+    pub fn requires_cwd_checking(&self, command_path: &Path) -> bool {
+        self.policy.requires_cwd_checking(command_path)
+    }
 }
 
 #[cfg(test)]

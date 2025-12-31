@@ -48,6 +48,26 @@ pub fn check_command_policy(
     args: &[String],
     command_name: &str,
 ) -> Result<(), error::Error> {
+    // Check if command defaults to CWD when no path arguments provided
+    let has_non_flag_args = args.iter().any(|arg| !arg.starts_with('-'));
+
+    if !has_non_flag_args && policy.requires_cwd_checking(executable_path) {
+        // Command will operate on CWD by default - check it against policy
+        if let Ok(cwd) = std::env::current_dir() {
+            policy
+                .check_file_access(&cwd, brushfire_policy::FileAccessMode::Read)
+                .map_err(|e| {
+                    error::Error::from(error::ErrorKind::FailedToExecuteCommand(
+                        command_name.to_string(),
+                        std::io::Error::new(
+                            std::io::ErrorKind::PermissionDenied,
+                            format!("Policy violation (implicit CWD access): {e}"),
+                        ),
+                    ))
+                })?;
+        }
+    }
+
     // Heuristic path checking - check arguments that might be file paths
     for arg in args {
         // Skip flags

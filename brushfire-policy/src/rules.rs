@@ -1,7 +1,7 @@
 //! Policy rule data structures.
 
-use std::collections::HashMap;
-use std::path::PathBuf;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 
 /// A complete policy loaded from one or more firejail profiles.
 #[derive(Debug, Clone)]
@@ -10,6 +10,9 @@ pub struct Policy {
     pub filesystem_rules: Vec<FilesystemRule>,
     /// Command execution rules.
     pub command_rules: Vec<CommandRule>,
+    /// Commands that require CWD access checking when invoked without path arguments.
+    /// Stores canonical command paths for efficient lookup.
+    pub cwd_checking_commands: HashSet<String>,
     /// Macro definitions for variable expansion.
     pub macros: HashMap<String, String>,
     /// Whether to enable safe /dev defaults in restrictive mode.
@@ -22,6 +25,7 @@ impl Default for Policy {
         Self {
             filesystem_rules: Vec::new(),
             command_rules: Vec::new(),
+            cwd_checking_commands: HashSet::new(),
             macros: HashMap::new(),
             enable_safe_dev_defaults: true,
         }
@@ -120,5 +124,49 @@ impl Policy {
         self.command_rules.retain(|rule| {
             !(rule.pattern == pattern && rule.action == RuleAction::Deny)
         });
+    }
+
+    /// Add a command that requires CWD checking when invoked without path arguments.
+    ///
+    /// # Arguments
+    ///
+    /// * `command_path` - Path to the command executable
+    pub fn add_cwd_checking_command(&mut self, command_path: &Path) {
+        // Store both the original and canonical forms for matching
+        let original = command_path.display().to_string();
+        self.cwd_checking_commands.insert(original);
+
+        // Also add canonical form to handle symlinks
+        if let Ok(canonical) = command_path.canonicalize() {
+            let canonical_str = canonical.display().to_string();
+            self.cwd_checking_commands.insert(canonical_str);
+        }
+    }
+
+    /// Check if a command requires CWD checking when invoked without path arguments.
+    ///
+    /// # Arguments
+    ///
+    /// * `command_path` - Path to the command executable
+    ///
+    /// # Returns
+    ///
+    /// `true` if the command requires CWD checking, `false` otherwise.
+    pub fn requires_cwd_checking(&self, command_path: &Path) -> bool {
+        // Check against stored patterns
+        let path_str = command_path.display().to_string();
+        if self.cwd_checking_commands.contains(&path_str) {
+            return true;
+        }
+
+        // Also check canonical form
+        if let Ok(canonical) = command_path.canonicalize() {
+            let canonical_str = canonical.display().to_string();
+            if self.cwd_checking_commands.contains(&canonical_str) {
+                return true;
+            }
+        }
+
+        false
     }
 }
