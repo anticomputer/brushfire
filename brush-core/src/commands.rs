@@ -94,6 +94,10 @@ pub fn check_command_policy(
 
         let path = Path::new(arg);
 
+        // Check if argument looks like a path (contains path separators)
+        // This catches cases like "touch /tmp/file" even if file doesn't exist yet
+        let has_path_components = arg.contains('/') || arg.contains(std::path::MAIN_SEPARATOR);
+
         // If the path is relative, resolve it against the shell's working directory
         // before canonicalization to avoid using the process CWD
         let resolved_path = if path.is_relative() {
@@ -102,16 +106,35 @@ pub fn check_command_policy(
             path.to_path_buf()
         };
 
-        // Only check policy if the file actually exists
-        // This avoids false positives on numeric arguments, URLs, etc.
-        if !resolved_path.exists() {
+        // Check policy if file exists OR argument has path components
+        // This catches both existing files and path-like arguments for commands like touch/mkdir
+        let should_check = resolved_path.exists() || has_path_components;
+
+        if !should_check {
             continue;
         }
 
-        // Canonicalize the existing path
-        let canonical = match resolved_path.canonicalize() {
-            Ok(c) => c,
-            Err(_) => continue, // Skip if canonicalization fails
+        // Try to canonicalize; for non-existent files, use the resolved path
+        let canonical = if resolved_path.exists() {
+            match resolved_path.canonicalize() {
+                Ok(c) => c,
+                Err(_) => continue,
+            }
+        } else {
+            // File doesn't exist yet, but has path components - check parent directory
+            if let Some(parent) = resolved_path.parent() {
+                if let Ok(canonical_parent) = parent.canonicalize() {
+                    if let Some(filename) = resolved_path.file_name() {
+                        canonical_parent.join(filename)
+                    } else {
+                        continue;
+                    }
+                } else {
+                    continue;
+                }
+            } else {
+                continue;
+            }
         };
 
         // Check the canonicalized path against policy (use Write mode conservatively)
