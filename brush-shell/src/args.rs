@@ -204,9 +204,9 @@ pub struct CommandLineArgs {
     #[clap(long = "profile", value_name = "FILE", help_heading = HEADING_EXPERIMENTAL_OPTIONS)]
     pub profile: Option<PathBuf>,
 
-    /// Webhook URL for policy event reporting (requires --profile).
+    /// Webhook URL for policy event reporting.
     #[cfg(feature = "policy-webhook")]
-    #[clap(long = "policy-webhook", requires = "profile", env = "BRUSHFIRE_WEBHOOK_URL", help_heading = HEADING_EXPERIMENTAL_OPTIONS)]
+    #[clap(long = "policy-webhook", env = "BRUSHFIRE_WEBHOOK_URL", help_heading = HEADING_EXPERIMENTAL_OPTIONS)]
     pub policy_webhook: Option<String>,
 
     /// Path and arguments for script to execute (optional).
