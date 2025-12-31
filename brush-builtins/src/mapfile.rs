@@ -1,4 +1,4 @@
-use std::io::Read;
+use std::io::{Read, Write};
 
 use clap::Parser;
 
@@ -66,6 +66,16 @@ impl builtins::Command for MapFileCommand {
 
         // Read!
         let results = self.read_entries(input_file)?;
+
+        // Block modification of BRUSHFIRE_* environment variables
+        if self.array_var_name.starts_with("BRUSHFIRE_") {
+            writeln!(
+                context.stderr(),
+                "mapfile: {}: cannot modify BRUSHFIRE_* environment variables",
+                self.array_var_name
+            )?;
+            return Ok(brush_core::ExecutionExitCode::InvalidUsage.into());
+        }
 
         // Assign!
         context.shell.env.update_or_add(

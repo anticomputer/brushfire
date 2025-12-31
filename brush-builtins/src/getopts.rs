@@ -42,6 +42,16 @@ impl builtins::Command for GetOptsCommand {
         &self,
         context: brush_core::ExecutionContext<'_>,
     ) -> Result<brush_core::ExecutionResult, Self::Error> {
+        // Block modification of BRUSHFIRE_* environment variables
+        if self.variable_name.starts_with("BRUSHFIRE_") {
+            writeln!(
+                context.stderr(),
+                "getopts: {}: cannot modify BRUSHFIRE_* environment variables",
+                self.variable_name
+            )?;
+            return Ok(brush_core::ExecutionExitCode::InvalidUsage.into());
+        }
+
         let mut option_defs = HashMap::<char, bool>::new();
         let mut treat_unknown_options_as_failure = true;
 
