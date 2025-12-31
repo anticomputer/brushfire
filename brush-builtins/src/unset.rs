@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::io::Write;
 
 use clap::Parser;
 
@@ -54,6 +55,16 @@ impl builtins::Command for UnsetCommand {
 
         #[expect(clippy::needless_continue)]
         for name in &self.names {
+            // Block unsetting BRUSHFIRE_* environment variables
+            if name.starts_with("BRUSHFIRE_") {
+                writeln!(
+                    context.stderr(),
+                    "unset: {}: cannot unset BRUSHFIRE_* environment variables",
+                    name
+                )?;
+                return Ok(brush_core::ExecutionExitCode::InvalidUsage.into());
+            }
+
             if unspecified || self.name_interpretation.shell_variables {
                 let parameter =
                     brush_parser::word::parse_parameter(name, &context.shell.parser_options())?;

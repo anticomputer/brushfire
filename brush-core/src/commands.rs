@@ -74,6 +74,24 @@ pub fn check_command_policy(
             continue;
         }
 
+        // Block BRUSHFIRE_* environment variable modifications
+        // Detect patterns like: BRUSHFIRE_FOO=bar or BRUSHFIRE_FOO (for unset)
+        if arg.starts_with("BRUSHFIRE_") || arg.contains("BRUSHFIRE_") {
+            // Check if it looks like a variable assignment (VAR=value)
+            if arg.contains('=') || arg.starts_with("BRUSHFIRE_") {
+                return Err(error::Error::from(error::ErrorKind::FailedToExecuteCommand(
+                    command_name.to_string(),
+                    std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        format!(
+                            "Policy violation: Modification of BRUSHFIRE_* environment variables is not allowed (argument '{}')",
+                            arg
+                        ),
+                    ),
+                )));
+            }
+        }
+
         let path = Path::new(arg);
 
         // If the path is relative, resolve it against the shell's working directory

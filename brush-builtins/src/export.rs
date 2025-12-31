@@ -68,6 +68,26 @@ impl ExportCommand {
         context: &mut brush_core::ExecutionContext<'_>,
         decl: &brush_core::CommandArg,
     ) -> Result<ExecutionResult, brush_core::Error> {
+        // Block modification of BRUSHFIRE_* environment variables
+        let var_name = match decl {
+            brush_core::CommandArg::String(s) => s.as_str(),
+            brush_core::CommandArg::Assignment(assignment) => {
+                match &assignment.name {
+                    ast::AssignmentName::VariableName(name) => name.as_str(),
+                    _ => "",
+                }
+            }
+        };
+
+        if var_name.starts_with("BRUSHFIRE_") {
+            writeln!(
+                context.stderr(),
+                "export: {}: cannot modify BRUSHFIRE_* environment variables",
+                var_name
+            )?;
+            return Ok(ExecutionExitCode::InvalidUsage.into());
+        }
+
         match decl {
             brush_core::CommandArg::String(s) => {
                 // See if this is supposed to be a function name.
