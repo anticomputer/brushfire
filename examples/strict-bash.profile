@@ -50,6 +50,30 @@ whitelist /usr/bin/printf
 # whitelisted and will be denied by default. No explicit blacklist needed.
 
 # ============================================================================
+# CWD CHECKING FOR COMMANDS WITH DEFAULT PATH BEHAVIOR
+# ============================================================================
+# Some POSIX utilities default to operating on CWD when invoked without args.
+# Use check-cwd to enforce CWD access policy for these commands.
+#
+# Examples of commands that default to CWD:
+#   ls              -> lists current directory
+#   find            -> searches from current directory
+#   pwd             -> prints working directory
+#   git, hg, svn    -> operate on repo in CWD
+#   cargo, npm, pip -> read project files from CWD
+#   eslint, clippy  -> lint files in CWD
+
+check-cwd /bin/ls
+check-cwd /bin/pwd
+check-cwd /usr/bin/find
+
+# If you want to allow other CWD-defaulting commands (build tools, linters):
+# check-cwd /usr/bin/git
+# check-cwd /usr/local/bin/cargo
+# check-cwd /usr/local/bin/npm
+# check-cwd /usr/local/bin/eslint
+
+# ============================================================================
 # FILESYSTEM ACCESS
 # ============================================================================
 

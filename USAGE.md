@@ -87,6 +87,52 @@ noexec /home/user/workspace
 noexec /home/user/Downloads
 ```
 
+### check-cwd
+
+Specify commands that require CWD (current working directory) access checking when invoked without explicit path arguments.
+
+Many POSIX utilities default to operating on the current directory when run without arguments (e.g., `ls`, `find`, `pwd`). Use `check-cwd` to enforce that the CWD is accessible according to policy before allowing these commands to run.
+
+```bash
+# Commands that default to CWD behavior
+check-cwd /bin/ls          # ls without args lists CWD
+check-cwd /usr/bin/find    # find without args searches CWD
+check-cwd /bin/pwd         # pwd operates on CWD
+
+# Version control systems
+check-cwd /usr/bin/git     # git commands operate on repo in CWD
+check-cwd /usr/bin/hg
+check-cwd /usr/bin/svn
+
+# Build tools and package managers
+check-cwd /usr/local/bin/cargo    # cargo build reads Cargo.toml from CWD
+check-cwd /usr/local/bin/npm      # npm reads package.json from CWD
+check-cwd /usr/local/bin/make     # make reads Makefile from CWD
+
+# Linters and formatters
+check-cwd /usr/local/bin/eslint   # eslint lints files in CWD
+check-cwd /usr/local/bin/clippy   # clippy checks project in CWD
+```
+
+**How it works:**
+- When a `check-cwd` command is invoked with only flags (no non-flag arguments)
+- Brushfire checks if the CWD is accessible according to filesystem policy
+- Blocks execution if CWD access would violate policy
+
+**Example:**
+```bash
+# Profile
+check-cwd /bin/ls
+whitelist /tmp/allowed-workspace
+
+# From /tmp/allowed-workspace:
+$ ls              # ✓ Allowed - CWD is whitelisted
+
+# From /tmp/blocked-workspace:
+$ ls              # ✗ Blocked - CWD not whitelisted
+$ ls /tmp/allowed-workspace  # ✓ Allowed - explicit path is whitelisted
+```
+
 ## Special Directives
 
 ### no-safe-dev-defaults
