@@ -535,7 +535,34 @@ async fn instantiate_shell_from_args(
             (None, None)
         };
 
-        if let Some(policy) = policy_opt {
+        if let Some(mut policy) = policy_opt {
+            // Auto-whitelist the current brush executable to allow child processes
+            if let Ok(exe_path) = std::env::current_exe() {
+                // Add filesystem whitelist
+                policy.add_filesystem_rule(brushfire_policy::FilesystemRule::Whitelist {
+                    path: exe_path.clone(),
+                    recursive: false,
+                });
+
+                // Add command Allow rule for execution
+                let pattern = exe_path.display().to_string();
+                policy.add_command_rule(brushfire_policy::CommandRule {
+                    pattern: pattern.clone(),
+                    action: brushfire_policy::RuleAction::Allow,
+                });
+
+                // Also add canonical version to handle symlinks
+                if let Ok(canonical) = exe_path.canonicalize() {
+                    let canonical_str = canonical.display().to_string();
+                    if canonical_str != pattern {
+                        policy.add_command_rule(brushfire_policy::CommandRule {
+                            pattern: canonical_str,
+                            action: brushfire_policy::RuleAction::Allow,
+                        });
+                    }
+                }
+            }
+
             let policy_engine = brushfire_policy::PolicyEngine::new(policy);
 
             // Check for inherited or provided webhook URL
@@ -557,6 +584,16 @@ async fn instantiate_shell_from_args(
             };
 
             let policy_engine = std::sync::Arc::new(policy_engine);
+
+            // Prepend brush executable directory to PATH to ensure correct version is used
+            if let Ok(exe_path) = std::env::current_exe() {
+                if let Some(exe_dir) = exe_path.parent() {
+                    if let Ok(current_path) = std::env::var("PATH") {
+                        let new_path = format!("{}:{}", exe_dir.display(), current_path);
+                        unsafe { std::env::set_var("PATH", new_path); }
+                    }
+                }
+            }
 
             // Store policy content and webhook URL for child processes
             // Safety: We're setting env vars early in shell startup, before any threads are spawned
