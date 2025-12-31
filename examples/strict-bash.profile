@@ -3,7 +3,7 @@
 #
 # This demonstrates brushfire's enforcement model:
 # - First-layer policy for shell operations
-# - Use with --wrap-coreutils for better file access control
+# - Heuristic path checking for command arguments
 # - Commands can spawn freely once allowed (see SECURITY.md)
 
 # ============================================================================
@@ -61,16 +61,12 @@ blacklist /root
 # NOTES
 # ============================================================================
 #
-# Without --wrap-coreutils:
+# Policy enforcement:
 #   - Shell file operations are controlled (redirections, builtins)
 #   - Command spawning is controlled (can't run curl, rm, etc.)
-#   - BUT: "cat /etc/shadow" would succeed (cat opens file, not shell)
-#
-# With --wrap-coreutils:
-#   - All the above PLUS
-#   - Coreutils wrappers check file arguments against policy
-#   - "cat /etc/shadow" would be blocked by the wrapper
-#   - Better enforcement for file operations via common utilities
+#   - Command arguments are checked for file paths automatically
+#   - "cat /etc/shadow" would be blocked (heuristic detects /etc/shadow)
 #
 # This is first-layer enforcement - once a command spawns, it can make
-# direct syscalls. See SECURITY.md for the complete security model.
+# direct syscalls. Paths embedded in strings won't be detected.
+# See SECURITY.md for the complete security model.

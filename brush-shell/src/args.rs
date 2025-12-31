@@ -204,16 +204,6 @@ pub struct CommandLineArgs {
     #[clap(long = "profile", value_name = "FILE", help_heading = HEADING_EXPERIMENTAL_OPTIONS)]
     pub profile: Option<PathBuf>,
 
-    /// Wrap coreutils with policy-checking wrappers (requires --profile).
-    #[cfg(feature = "policy")]
-    #[clap(long = "wrap-coreutils", requires = "profile", help_heading = HEADING_EXPERIMENTAL_OPTIONS)]
-    pub wrap_coreutils: bool,
-
-    /// Suppress the security warning when using --wrap-coreutils with whitelist rules.
-    #[cfg(feature = "policy")]
-    #[clap(long = "suppress-coreutils-warning", requires = "wrap_coreutils", help_heading = HEADING_EXPERIMENTAL_OPTIONS)]
-    pub suppress_coreutils_warning: bool,
-
     /// Webhook URL for policy event reporting (requires --profile).
     #[cfg(feature = "policy-webhook")]
     #[clap(long = "policy-webhook", requires = "profile", env = "BRUSHFIRE_WEBHOOK_URL", help_heading = HEADING_EXPERIMENTAL_OPTIONS)]

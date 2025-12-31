@@ -21,7 +21,6 @@
 #   BRUSH_BIN                  - Path to brush binary (default: ../target/debug/brush)
 #   POLICY_PROFILE             - Path to policy profile (default: ./strict-bash.profile)
 #   POLICY_WEBHOOK             - Webhook URL for observability (optional)
-#   SHOW_COREUTILS_WARNING     - Set to '1' to show security warning (default: suppressed)
 
 set -euo pipefail
 
@@ -47,13 +46,7 @@ fi
 # Build brush arguments
 BRUSH_ARGS=(
     --profile "$POLICY_PROFILE"
-    --wrap-coreutils  # Enable coreutils wrappers for better file access control
 )
-
-# Suppress warning by default (set SHOW_COREUTILS_WARNING=1 to enable)
-if [[ "${SHOW_COREUTILS_WARNING:-0}" != "1" ]]; then
-    BRUSH_ARGS+=(--suppress-coreutils-warning)
-fi
 
 # Optional webhook for observability
 if [[ -n "${POLICY_WEBHOOK:-}" ]]; then

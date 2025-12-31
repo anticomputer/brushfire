@@ -156,9 +156,6 @@ async fn run_async(
     // Instantiate an appropriately configured shell and wrap it in an `Arc`. Note that we do
     // *not* run any code in the shell yet. We'll delay loading profiles and such until after
     // we've set up everything else (in `run_in_shell`).
-    #[cfg(feature = "policy")]
-    let (shell, _wrapper_cleanup) = instantiate_shell(&args, cli_args).await?;
-    #[cfg(not(feature = "policy"))]
     let shell = instantiate_shell(&args, cli_args).await?;
     let shell = Arc::new(Mutex::new(shell));
 
@@ -388,9 +385,6 @@ fn instantiate_shell_from_file(
 ///
 /// * `args` - The parsed command-line arguments.
 /// * `cli_args` - The raw command-line arguments.
-#[cfg(feature = "policy")]
-type ShellResult = Result<(brush_core::Shell, Option<crate::wrappers::WrapperCleanup>), brush_interactive::ShellError>;
-#[cfg(not(feature = "policy"))]
 type ShellResult = Result<brush_core::Shell, brush_interactive::ShellError>;
 
 async fn instantiate_shell_from_args(
@@ -482,9 +476,6 @@ async fn instantiate_shell_from_args(
 
     // Load policy if profile is specified (brushfire feature).
     #[cfg(feature = "policy")]
-    let mut wrapper_temp_dir: Option<tempfile::TempDir> = None;
-
-    #[cfg(feature = "policy")]
     let shell = if let Some(ref profile_path) = args.profile {
         let mut parser = brushfire_policy::ProfileParser::new();
         let policy = parser.parse_file(profile_path).map_err(|e| {
@@ -493,51 +484,20 @@ async fn instantiate_shell_from_args(
                 format!("Failed to load policy profile '{}': {}", profile_path.display(), e),
             )
         })?;
-        let mut policy_engine = brushfire_policy::PolicyEngine::new(policy);
+        let policy_engine = brushfire_policy::PolicyEngine::new(policy);
 
-        // Auto-blacklist real utilities if --wrap-coreutils is enabled
-        // Also prepare wrapper directory for auto-whitelist if in default-deny mode
-        if args.wrap_coreutils {
-            crate::wrappers::auto_blacklist_utilities(&mut policy_engine).map_err(|e| {
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Failed to auto-blacklist utilities: {}", e),
-                )
-            })?;
-
-            // Create wrapper directory early so we can auto-whitelist it
-            let temp_dir = tempfile::tempdir().map_err(|e| {
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Failed to create wrapper temp directory: {}", e),
-                )
-            })?;
-
-            // Auto-whitelist wrapper directory if in default-deny mode
-            crate::wrappers::auto_whitelist_wrappers(
-                &mut policy_engine,
-                temp_dir.path(),
-                args.suppress_coreutils_warning,
-            ).map_err(|e| {
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Failed to auto-whitelist wrappers: {}", e),
-                )
-            })?;
-
-            wrapper_temp_dir = Some(temp_dir);
-        }
-
-        // Set up webhook reporter if URL provided and store session ID for wrappers
+        // Set up webhook reporter if URL provided
         #[cfg(feature = "policy-webhook")]
-        if let Some(ref webhook_url) = args.policy_webhook {
+        let policy_engine = if let Some(ref webhook_url) = args.policy_webhook {
             let session_id = uuid::Uuid::new_v4().to_string();
             let reporter = brushfire_policy::WebhookReporter::new(
                 webhook_url.clone(),
                 session_id,
             );
-            policy_engine.set_reporter(std::sync::Arc::new(reporter));
-        }
+            policy_engine.with_reporter(std::sync::Arc::new(reporter))
+        } else {
+            policy_engine
+        };
 
         let policy_engine = std::sync::Arc::new(policy_engine);
         shell.maybe_policy_engine(Some(policy_engine))
@@ -546,43 +506,8 @@ async fn instantiate_shell_from_args(
     };
 
     // Build the shell.
-    let mut shell = shell.build().await?;
+    let shell = shell.build().await?;
 
-    // Set up wrapper environment if --wrap-coreutils is enabled
-    #[cfg(feature = "policy")]
-    let wrapper_cleanup = if args.wrap_coreutils {
-        if let Some(ref profile_path) = args.profile {
-            // Get webhook info from args if available
-            #[cfg(feature = "policy-webhook")]
-            let (webhook_url, session_id) = if let Some(ref url) = args.policy_webhook {
-                // Generate a new session ID for wrappers
-                let id = uuid::Uuid::new_v4().to_string();
-                (Some(url), Some(id))
-            } else {
-                (None, None)
-            };
-
-            #[cfg(not(feature = "policy-webhook"))]
-            let (webhook_url, session_id) = (None::<&String>, None::<String>);
-
-            Some(crate::wrappers::setup_coreutils_wrappers(
-                profile_path,
-                &mut shell,
-                webhook_url,
-                session_id.as_ref(),
-                wrapper_temp_dir.take(),
-            )?)
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-
-    #[cfg(feature = "policy")]
-    return Ok((shell, wrapper_cleanup));
-
-    #[cfg(not(feature = "policy"))]
     Ok(shell)
 }
 

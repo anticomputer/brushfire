@@ -14,7 +14,6 @@ echo "Testing command spawn with arguments..."
 cargo run -q -p brush-shell --features policy-webhook -- \
   --profile test-profiles/strict-whitelist.profile \
   --policy-webhook http://localhost:8765 \
-  --wrap-coreutils \
   -c 'cat -n /tmp/test-args.txt' 2>&1 | head -5
 
 # Give webhook time to flush

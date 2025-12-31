@@ -175,7 +175,7 @@ impl WebhookReporter {
             }
             Err(_) => {
                 // No Tokio runtime available, create one and WAIT for completion
-                // This is important for short-lived processes (wrappers) that exit immediately
+                // This is important for short-lived processes that exit immediately
                 let handle = std::thread::spawn(move || {
                     let rt = tokio::runtime::Builder::new_current_thread()
                         .enable_all()
@@ -201,7 +201,7 @@ impl WebhookReporter {
                 });
 
                 // Wait for the webhook to complete (blocking)
-                // This ensures wrappers don't exit before the webhook is sent
+                // This ensures the process doesn't exit before the webhook is sent
                 let _ = handle.join();
             }
         }

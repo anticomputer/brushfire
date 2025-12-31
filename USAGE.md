@@ -178,16 +178,9 @@ whitelist /dev/stderr
 # Basic usage
 ./target/debug/brush --profile my.profile -c 'commands here'
 
-# With coreutils wrappers
-./target/debug/brush --profile my.profile --wrap-coreutils -c 'cat file.txt'
-
 # With webhook observability (requires building with --webhook flag)
 ./build.sh dev --webhook
-./target/debug/brush --profile my.profile --policy-webhook http://localhost:8080 -c 'commands'
-
-# Combined
 ./target/debug/brush --profile my.profile \
-      --wrap-coreutils \
       --policy-webhook http://localhost:8080 \
       -c 'commands here'
 ```

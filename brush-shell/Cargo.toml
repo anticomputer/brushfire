@@ -48,9 +48,8 @@ reedline = ["brush-interactive/reedline"]
 experimental = ["experimental-builtins", "experimental-load"]
 experimental-builtins = ["dep:brush-experimental-builtins"]
 experimental-load = ["dep:serde_json", "brush-core/serde"]
-policy = ["brush-core/policy", "brush-builtins/policy", "dep:brushfire-policy", "dep:brushfire-wrappers", "dep:uuid"]
-policy-webhook = ["policy", "brushfire-policy/webhook", "brushfire-wrappers/webhook"]
-embed-wrappers = ["policy"]
+policy = ["brush-core/policy", "brush-builtins/policy", "dep:brushfire-policy", "dep:uuid"]
+policy-webhook = ["policy", "brushfire-policy/webhook"]
 
 [lints]
 workspace = true
@@ -60,9 +59,7 @@ brush-core = { version = "^0.4.0", path = "../brush-core" }
 brush-builtins = { version = "^0.1.0", path = "../brush-builtins" }
 brush-experimental-builtins = { version = "^0.1.0", path = "../brush-experimental-builtins", optional = true }
 brushfire-policy = { version = "0.1.0", path = "../brushfire-policy", optional = true }
-brushfire-wrappers = { version = "0.1.0", path = "../brushfire-wrappers", optional = true }
 uuid = { version = "1.0", features = ["v4"], optional = true }
-tempfile = "3.8"
 clap = { version = "4.5.53", features = ["derive", "env"] }
 color-print = "0.3.7"
 const_format = "0.2.35"

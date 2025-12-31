@@ -52,14 +52,20 @@ $ brush --profile restricted.profile -c "cat < /tmp/secret"
 error: Policy violation: File access denied
 ```
 
-**Limitation**: Commands that open files themselves are not controlled:
+**Heuristic argument checking**: Brushfire inspects command arguments for file paths:
 
 ```bash
 # Profile: blacklist /tmp/secret
 
 $ brush --profile restricted.profile -c "cat /tmp/secret"
-# /bin/cat is spawned (allowed), then cat opens /tmp/secret directly via OS
-# File is read successfully - brushfire only controlled the spawn
+# ✗ BLOCKED - "/tmp/secret" detected as file path argument and checked against policy
+```
+
+**Limitation**: Non-obvious file access patterns may bypass detection:
+
+```bash
+$ brush --profile restricted.profile -c "python3 -c 'open(\"/tmp/secret\").read()'"
+# ✓ ALLOWED - no file path arguments detected, Python opens file via syscall
 ```
 
 ### Shell Builtin Commands
@@ -102,7 +108,7 @@ $ brush --profile test.profile -c "/tmp/script.sh"
 → ✗ BLOCKED (noexec directory)
 
 $ brush --profile test.profile -c "cat /tmp/secret"
-→ ✓ ALLOWED (/bin/cat spawns, then cat opens /tmp/secret via OS)
+→ ✗ BLOCKED (heuristic detects "/tmp/secret" as file path argument)
 
 $ brush --profile test.profile -c "python3 -c 'import urllib; urllib.request.urlopen(...)'"
 → ✓ ALLOWED (python3 spawns, then python makes network calls directly)
@@ -111,84 +117,85 @@ $ brush --profile test.profile -c "/bin/sh -c 'curl example.com'"
 → ✓ ALLOWED if /bin/sh not blacklisted (sh spawns, then sh spawns curl)
 ```
 
-## Coreutils Wrappers (`--wrap-coreutils`)
+## Heuristic Path Argument Checking
 
-The `--wrap-coreutils` feature wraps common utilities with policy-checking proxies:
-
-```bash
-brush --profile policy.profile --wrap-coreutils -c "cat /etc/passwd"
-# cat's file access is checked against policy before execution
-```
+Brushfire automatically detects and checks file path arguments to ANY command:
 
 ### How It Works
 
-1. Creates policy-aware wrappers for ~30 POSIX utilities
-2. Prepends wrapper directory to PATH
-3. Auto-blacklists real utilities to prevent bypass via absolute paths
-4. Wrappers check arguments against policy before execing real utility
+1. Before spawning a process, Brushfire inspects all command arguments
+2. Arguments that don't start with `-` are tested to see if they resolve to paths
+3. Paths are canonicalized (resolving symlinks, relative paths, non-existent files)
+4. Each detected path is checked against the policy (conservatively as Write access)
+5. If any path violates policy, the command is blocked before spawning
 
-### Use Case
+### Coverage
 
-Coreutils wrappers are designed for **AI agent observability and accountability**, not adversarial security. They provide guardrails and audit trail for AI agents performing file operations.
-
-### Wrapped Utilities
-
-File operations: `cat`, `cp`, `mv`, `rm`, `ls`, `head`, `tail`, `touch`, `mkdir`, `ln`, `chmod`, `chown`, `chgrp`, `rmdir`, `dd`, `file`, `stat`
-
-Text processing: `grep`, `sed`, `awk`, `cut`, `paste`, `sort`, `uniq`, `tr`, `wc`, `tee`, `diff`
-
-Archive/search: `tar`, `find`
-
-### Example
+This approach provides **universal coverage** - works for ANY command, not just specific utilities:
 
 ```bash
-# Profile: blacklist /etc/shadow
+cat /etc/passwd          # ✓ Checked
+grep pattern file.txt    # ✓ "file.txt" checked
+python script.py         # ✓ "script.py" checked
+custom-tool data.json    # ✓ "data.json" checked
+```
 
-# WITHOUT --wrap-coreutils:
-$ brush --profile policy.profile -c "cat /etc/shadow"
-✓ ALLOWED - /bin/cat spawns, opens file directly
+### What Gets Checked
 
-# WITH --wrap-coreutils:
-$ brush --profile policy.profile --wrap-coreutils -c "cat /etc/shadow"
-✗ BLOCKED - wrapper checks /etc/shadow against policy before calling real cat
+- **Existing files**: Direct canonicalization
+- **New files**: Parent directory + filename (e.g., `touch /tmp/newfile.txt`)
+- **Relative paths**: Resolved to absolute paths
+- **Symlinks**: Resolved to canonical targets
+
+### What Gets Skipped
+
+- **Flags**: Arguments starting with `-`
+- **Non-paths**: Strings that don't resolve to valid paths
+- **Invalid paths**: Paths whose parent directories don't exist
+
+### Examples
+
+```bash
+# Detects file path arguments
+$ brush --profile policy.profile -c "cat /etc/passwd"
+# ✗ BLOCKED - "/etc/passwd" detected and checked
+
+# Skips non-path arguments
+$ brush --profile policy.profile -c "grep pattern file.txt"
+# "pattern" - not a valid path, skipped
+# "file.txt" - detected and checked
+
+# Handles new files
+$ brush --profile policy.profile -c "touch /tmp/newfile.txt"
+# ✗ BLOCKED - "/tmp/newfile.txt" (parent "/tmp" exists, checked)
 ```
 
 ### Known Limitations
 
-**Time-of-Check-Time-of-Use (TOCTOU)**: Race condition between policy check and file access:
+**Conservative Access Mode**: All paths are checked with Write access mode by default. This may be overly restrictive but prevents accidental modifications.
 
-```
-Wrapper checks /tmp/file.txt → ALLOWED
-                [race window]
-Attacker: mv /tmp/file.txt /tmp/old && ln -s /etc/passwd /tmp/file.txt
-Real utility opens /tmp/file.txt → reads /etc/passwd
-```
-
-This is acceptable for the intended use case (AI agent guardrails) but not for adversarial security.
-
-**Non-Wrapped Utilities**: Only listed POSIX utilities are wrapped:
+**Embedded file paths**: Paths embedded in strings or constructed dynamically are not detected:
 
 ```bash
-# Wrapped - policy enforced
-cat /etc/shadow → checked
-
-# Not wrapped - policy bypassed
-perl -e 'open(F, "/etc/shadow"); print <F>' → not checked
-python3 -c 'open("/etc/shadow").read()' → not checked
+# Not detected:
+python3 -c 'open("/etc/passwd").read()'  # Path in string literal
+node -e 'fs.readFileSync("/etc/passwd")' # Path in code
 ```
+
+This is acceptable for the intended use case (AI agent guardrails) - agents typically pass file paths as direct arguments.
 
 ### Webhook Observability
 
 ```bash
 brush --profile policy.profile \
-      --wrap-coreutils \
       --policy-webhook http://localhost:8080 \
       -c "commands here"
 
 # Webhook receives JSON events for all policy checks:
 # - Allowed operations (for audit trail)
 # - Denied operations (for alerting)
-# - File paths, access modes, timestamps
+# - File paths detected from arguments
+# - Policy violation reasons
 ```
 
 ## Safe `/dev/` Defaults

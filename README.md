@@ -11,7 +11,7 @@ For security isolation of untrusted code, use OS-level enforcement. See [SECURIT
 Brushfire adds shell-level policies controlling:
 - **Filesystem access** - whitelist/blacklist paths, read-only directories, noexec regions
 - **Command execution** - whitelist/blacklist which commands can spawn
-- **Coreutils wrappers** - optional policy-aware wrappers for common utilities
+- **Command argument checking** - heuristic detection and policy checking of file path arguments
 
 ## Documentation
 
@@ -27,9 +27,6 @@ Brushfire adds shell-level policies controlling:
 # Release build
 ./build.sh release
 
-# Release with embedded wrappers (for distribution)
-./build.sh release-embedded
-
 # With webhook support
 ./build.sh dev --webhook
 ```
@@ -42,8 +39,8 @@ Run `./build.sh help` for more build options.
 # Run with a policy profile
 brush --profile my.profile -c 'commands here'
 
-# With coreutils wrappers for first-chance file access enforcement and observability
-brush --profile my.profile --wrap-coreutils -c 'cat /etc/passwd'
+# All command arguments that resolve to paths are automatically checked
+brush --profile my.profile -c 'cat /etc/passwd'
 ```
 
 ### Example Profile
@@ -119,7 +116,7 @@ When built with `--webhook`, Brushfire can send policy events to an HTTP endpoin
 ```
 
 **Event structure:**
-- File access checks (read/write/execute)
+- File access checks from command arguments
 - Command spawn attempts
 - Policy decisions (allowed/denied)
 - Violation reasons

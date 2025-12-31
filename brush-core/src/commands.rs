@@ -624,8 +624,50 @@ pub(crate) fn execute_external_command(
         let args = if cmd_args.is_empty() {
             None
         } else {
-            Some(cmd_args)
+            Some(cmd_args.clone())
         };
+
+        // NEW: Heuristic path checking - check all arguments that might be file paths
+        for arg in &cmd_args {
+            // Skip flags
+            if arg.starts_with('-') {
+                continue;
+            }
+
+            let path = Path::new(arg);
+
+            // Try to canonicalize the path (handles both existing and non-existing files)
+            let canonical = if let Ok(c) = path.canonicalize() {
+                // File exists, use canonical path
+                c
+            } else if let Some(parent) = path.parent() {
+                // File doesn't exist, try to canonicalize parent + filename
+                if let Ok(canonical_parent) = parent.canonicalize() {
+                    if let Some(filename) = path.file_name() {
+                        canonical_parent.join(filename)
+                    } else {
+                        continue; // Skip if no filename
+                    }
+                } else {
+                    continue; // Skip if parent doesn't exist
+                }
+            } else {
+                continue; // Skip if it's not a valid path at all
+            };
+
+            // Check the canonicalized path against policy (use Write mode conservatively)
+            policy
+                .check_file_access(&canonical, brushfire_policy::FileAccessMode::Write)
+                .map_err(|e| {
+                    error::Error::from(error::ErrorKind::FailedToExecuteCommand(
+                        context.command_name.clone(),
+                        std::io::Error::new(
+                            std::io::ErrorKind::PermissionDenied,
+                            format!("Policy violation (argument '{arg}'): {e}"),
+                        ),
+                    ))
+                })?;
+        }
 
         // Check if command execution is blocked
         policy.check_process_spawn(executable_path, args).map_err(|e| {

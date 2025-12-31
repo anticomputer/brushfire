@@ -379,9 +379,6 @@ impl PolicyEngine {
 
     /// Add a blacklist rule dynamically to the policy.
     ///
-    /// This is used by the `--wrap-coreutils` feature to automatically blacklist
-    /// real utility paths to prevent bypass via absolute paths.
-    ///
     /// # Arguments
     ///
     /// * `path` - The path to blacklist
@@ -395,9 +392,6 @@ impl PolicyEngine {
 
     /// Add a filesystem rule dynamically to the policy.
     ///
-    /// This is used by the `--wrap-coreutils` feature to automatically whitelist
-    /// wrapper directories in default-deny mode.
-    ///
     /// # Arguments
     ///
     /// * `rule` - The filesystem rule to add
@@ -406,9 +400,6 @@ impl PolicyEngine {
     }
 
     /// Add a command rule dynamically to the policy.
-    ///
-    /// This is used by the `--wrap-coreutils` feature to automatically blacklist
-    /// real utility paths to prevent bypass via absolute paths.
     ///
     /// # Arguments
     ///
@@ -422,12 +413,9 @@ impl PolicyEngine {
 
     /// Add a command allow rule dynamically to the policy.
     ///
-    /// This is used by the `--wrap-coreutils` feature to automatically whitelist
-    /// wrapper paths when in default-deny mode.
-    ///
     /// # Arguments
     ///
-    /// * `pattern` - The command pattern to allow (e.g., "/tmp/wrappers/*")
+    /// * `pattern` - The command pattern to allow (e.g., "/usr/bin/ls")
     pub fn add_command_allow_rule(&mut self, pattern: String) {
         self.policy.add_command_rule(crate::rules::CommandRule {
             pattern,

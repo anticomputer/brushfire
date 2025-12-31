@@ -2,8 +2,7 @@
 #
 # Brushfire build script
 #
-# Handles building brush with proper wrapper binary management
-# and state cleaning between development and release builds.
+# Simplified build script for brush with policy enforcement
 
 set -e
 
@@ -52,9 +51,8 @@ print_usage() {
 Usage: $0 <target> [options]
 
 Targets:
-  dev               Build for development (no embedded wrappers)
-  release           Build optimized release (no embedded wrappers)
-  release-embedded  Build release with embedded wrappers (for distribution)
+  dev               Build for development
+  release           Build optimized release
   clean             Clean all build artifacts
   help              Show this help message
 
@@ -64,7 +62,7 @@ Options:
 
 Examples:
   $0 dev                    # Development build
-  $0 release-embedded       # Distribution build with embedded wrappers
+  $0 release                # Release build
   $0 release --webhook      # Release build with webhook support
   $0 clean                  # Clean everything
 
@@ -83,15 +81,7 @@ build_dev() {
         features="policy-webhook"
     fi
 
-    print_info "Building for development (no embedded wrappers)..."
-
-    # Build wrappers in debug mode
-    print_info "Building wrapper binaries (debug mode)..."
-    if [[ "$VERBOSE" == "1" ]]; then
-        cargo build -p brushfire-wrappers
-    else
-        cargo build -p brushfire-wrappers --quiet
-    fi
+    print_info "Building for development..."
 
     # Build brush
     print_info "Building brush (debug mode)..."
@@ -109,7 +99,6 @@ build_dev() {
 
     print_success "Development build complete"
     print_info "Binary: target/debug/brush"
-    print_info "Wrappers: target/debug/{cat,ls,grep,...}"
 
     # Show size
     local size=$(du -h target/debug/brush 2>/dev/null | cut -f1)
@@ -122,15 +111,7 @@ build_release() {
         features="policy-webhook"
     fi
 
-    print_info "Building optimized release (no embedded wrappers)..."
-
-    # Build wrappers in release mode
-    print_info "Building wrapper binaries (release mode)..."
-    if [[ "$VERBOSE" == "1" ]]; then
-        cargo build --release -p brushfire-wrappers
-    else
-        cargo build --release -p brushfire-wrappers --quiet
-    fi
+    print_info "Building optimized release..."
 
     # Build brush
     print_info "Building brush (release mode)..."
@@ -148,79 +129,10 @@ build_release() {
 
     print_success "Release build complete"
     print_info "Binary: target/release/brush"
-    print_info "Wrappers: target/release/{cat,ls,grep,...}"
 
     # Show size
     local size=$(du -h target/release/brush 2>/dev/null | cut -f1)
     print_info "Binary size: $size"
-}
-
-build_release_embedded() {
-    local features="policy,embed-wrappers"
-    if [[ "$ENABLE_WEBHOOK" == "1" ]]; then
-        features="policy-webhook,embed-wrappers"
-    fi
-
-    print_info "Building release with embedded wrappers (for distribution)..."
-
-    # Build wrappers in release mode FIRST (with webhook if enabled)
-    print_info "Building wrapper binaries (release mode)..."
-    local wrapper_features=""
-    if [[ "$ENABLE_WEBHOOK" == "1" ]]; then
-        wrapper_features="--features webhook"
-    fi
-
-    if [[ "$VERBOSE" == "1" ]]; then
-        cargo build --release -p brushfire-wrappers $wrapper_features
-    else
-        cargo build --release -p brushfire-wrappers $wrapper_features --quiet
-    fi
-
-    print_success "Wrappers built"
-
-    # Verify key wrappers exist (sample check)
-    local missing_wrappers=()
-    for util in cat ls grep rm cp; do
-        if [[ ! -f "target/release/$util" ]]; then
-            missing_wrappers+=("$util")
-        fi
-    done
-
-    if [[ ${#missing_wrappers[@]} -gt 0 ]]; then
-        print_error "Wrapper binaries not found: ${missing_wrappers[*]}"
-        print_error "Cannot embed wrappers"
-        exit 1
-    fi
-
-    # Build brush with embedding
-    print_info "Building brush with embedded wrappers..."
-    print_warning "This may take a while (embedding ~30 binaries)..."
-    if [[ "$VERBOSE" == "1" ]]; then
-        cargo build --release -p brush-shell --features "$features"
-    else
-        cargo build --release -p brush-shell --features "$features" --quiet
-    fi
-
-    # Verify binary was built
-    if [[ ! -f target/release/brush ]]; then
-        print_error "Build failed: target/release/brush not found"
-        exit 1
-    fi
-
-    print_success "Release build with embedded wrappers complete"
-    print_info "Binary: target/release/brush"
-    print_info "Distribution: Single self-contained binary"
-
-    # Show size
-    local size=$(du -h target/release/brush 2>/dev/null | cut -f1)
-    print_info "Binary size: $size (includes embedded wrappers)"
-
-    # Verify embedding by checking size
-    local size_mb=$(du -m target/release/brush 2>/dev/null | cut -f1)
-    if [[ "$size_mb" -lt 10 ]]; then
-        print_warning "Binary size is unusually small ($size)"
-        print_warning "Wrappers may not be properly embedded"
-    fi
 }
 
 # Parse arguments
@@ -230,7 +142,7 @@ VERBOSE="0"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        dev|release|release-embedded|clean|help)
+        dev|release|clean|help)
             TARGET="$1"
             shift
             ;;
@@ -264,9 +176,6 @@ case $TARGET in
         ;;
     release)
         build_release
-        ;;
-    release-embedded)
-        build_release_embedded
         ;;
     clean)
         clean_build
