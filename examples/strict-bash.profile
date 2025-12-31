@@ -11,21 +11,43 @@
 # ============================================================================
 # Using 'whitelist' triggers default-deny for BOTH filesystem AND commands
 # Only explicitly whitelisted commands can be spawned
+# Blacklist is unnecessary - anything not whitelisted is denied by default
 
-# Allow common safe utilities (glob pattern to match all in directory)
-whitelist /usr/bin/*
-whitelist /bin/*
+# Safe file viewing commands
+whitelist /bin/ls
+whitelist /bin/cat
+whitelist /usr/bin/head
+whitelist /usr/bin/tail
+whitelist /usr/bin/less
+whitelist /usr/bin/more
+whitelist /usr/bin/file
 
-# Block dangerous commands explicitly (takes precedence over whitelist)
-blacklist /usr/bin/curl
-blacklist /usr/bin/wget
-blacklist /usr/bin/nc
-blacklist /bin/nc
-blacklist /usr/bin/ssh
-blacklist /usr/bin/scp
-blacklist /bin/rm
-blacklist /usr/bin/sudo
-blacklist /usr/bin/su
+# Safe text processing
+whitelist /usr/bin/grep
+whitelist /usr/bin/cut
+whitelist /usr/bin/tr
+whitelist /usr/bin/wc
+whitelist /usr/bin/sort
+whitelist /usr/bin/uniq
+
+# Safe file operations (read-only or non-destructive)
+whitelist /bin/mkdir
+whitelist /bin/cp
+whitelist /usr/bin/touch
+whitelist /usr/bin/find
+whitelist /usr/bin/diff
+
+# Basic utilities
+whitelist /bin/echo
+whitelist /bin/pwd
+whitelist /usr/bin/which
+whitelist /usr/bin/basename
+whitelist /usr/bin/dirname
+whitelist /usr/bin/date
+whitelist /usr/bin/printf
+
+# Note: Commands like sh, bash, env, perl, curl, rm, ssh, sudo are NOT
+# whitelisted and will be denied by default. No explicit blacklist needed.
 
 # ============================================================================
 # FILESYSTEM ACCESS
