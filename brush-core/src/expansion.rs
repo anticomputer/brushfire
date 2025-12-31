@@ -764,6 +764,8 @@ impl<'a> WordExpander<'a> {
                 self.shell.working_dir(),
                 Some(&patterns::Pattern::accept_all_expand_filter),
                 &options,
+                #[cfg(feature = "policy")]
+                self.shell.policy.as_deref(),
             )
             .unwrap_or_default();
 

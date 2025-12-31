@@ -291,6 +291,8 @@ impl Spec {
                 shell.working_dir(),
                 Some(&patterns::Pattern::accept_all_expand_filter),
                 &patterns::FilenameExpansionOptions::default(),
+                #[cfg(feature = "policy")]
+                shell.policy.as_deref(),
             )?;
 
             for expansion in expansions {
@@ -1160,6 +1162,8 @@ async fn get_file_completions(
             shell.working_dir(),
             Some(&path_filter),
             &patterns::FilenameExpansionOptions::default(),
+            #[cfg(feature = "policy")]
+            shell.policy.as_deref(),
         )
         .unwrap_or_default()
         .into_iter()

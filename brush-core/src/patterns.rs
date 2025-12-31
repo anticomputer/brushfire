@@ -145,6 +145,7 @@ impl Pattern {
         working_dir: &Path,
         path_filter: Option<&PF>,
         options: &FilenameExpansionOptions,
+        #[cfg(feature = "policy")] policy: Option<&brushfire_policy::PolicyEngine>,
     ) -> Result<Vec<String>, error::Error>
     where
         PF: Fn(&Path) -> bool,
@@ -259,6 +260,19 @@ impl Pattern {
                         .is_match(dir_entry.file_name().to_string_lossy().as_ref())
                         .unwrap_or(false)
                 };
+
+                // Policy check: verify read access to directory before listing contents
+                #[cfg(feature = "policy")]
+                if let Some(policy) = policy {
+                    policy
+                        .check_file_access(&current_path, brushfire_policy::FileAccessMode::Read)
+                        .map_err(|e| {
+                            error::Error::from(std::io::Error::new(
+                                std::io::ErrorKind::PermissionDenied,
+                                format!("Policy violation during glob expansion: {e}"),
+                            ))
+                        })?;
+                }
 
                 let mut matching_paths_in_dir: Vec<_> = current_path
                     .read_dir()
