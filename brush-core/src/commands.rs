@@ -679,21 +679,6 @@ pub(crate) fn execute_external_command(
                 ),
             ))
         })?;
-
-        // Check if execution is allowed from the parent directory (noexec check)
-        if let Some(parent_dir) = executable_path.parent() {
-            policy
-                .check_file_access(parent_dir, brushfire_policy::FileAccessMode::Execute)
-                .map_err(|e| {
-                    error::Error::from(error::ErrorKind::FailedToExecuteCommand(
-                        context.command_name.clone(),
-                        std::io::Error::new(
-                            std::io::ErrorKind::PermissionDenied,
-                            format!("Policy violation: {e}"),
-                        ),
-                    ))
-                })?;
-        }
     }
 
     match sys::process::spawn(cmd) {
