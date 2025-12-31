@@ -56,8 +56,8 @@ pub struct ActionContext {
     /// Resource being accessed (file path, command path, etc.)
     pub resource: String,
 
-    /// Operation type: "read", "write", "execute"
-    pub operation: String,
+    /// Access mode being checked: "read", "write", "execute"
+    pub access_mode: String,
 
     /// Resource type: "file" or "command"
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -233,7 +233,7 @@ impl PolicyEvent {
         result: CheckResult,
         reason: String,
     ) -> Self {
-        let operation = match mode {
+        let access_mode = match mode {
             FileAccessMode::Read => "read",
             FileAccessMode::Write => "write",
             FileAccessMode::Execute => "execute", // Should not be used for FileAccess events
@@ -245,7 +245,7 @@ impl PolicyEvent {
             event_type: EventType::FileAccess,
             action: ActionContext {
                 resource: resource.display().to_string(),
-                operation: operation.to_string(),
+                access_mode: access_mode.to_string(),
                 resource_type: Some("file".to_string()),
                 command: std::env::args().collect::<Vec<_>>().get(0).cloned(),
                 args: None,
@@ -271,7 +271,7 @@ impl PolicyEvent {
             event_type: EventType::Execution,
             action: ActionContext {
                 resource: resource.display().to_string(),
-                operation: "execute".to_string(),
+                access_mode: "execute".to_string(),
                 resource_type: Some("file".to_string()),
                 command: std::env::args().collect::<Vec<_>>().get(0).cloned(),
                 args: None,
@@ -298,7 +298,7 @@ impl PolicyEvent {
             event_type: EventType::Execution,
             action: ActionContext {
                 resource: command.display().to_string(),
-                operation: "execute".to_string(),
+                access_mode: "execute".to_string(),
                 resource_type: Some("command".to_string()),
                 command: Some(command.display().to_string()),
                 args,

@@ -39,7 +39,7 @@ pub trait PolicyReporter: Send + Sync {
   "event_type": "file_access",
   "action": {
     "resource": "/etc/passwd",
-    "operation": "read",
+    "access_mode": "read",
     "resource_type": "file",
     "command": "cat /etc/passwd",
     "cwd": "/home/user"
@@ -58,7 +58,7 @@ pub trait PolicyReporter: Send + Sync {
   "event_type": "execution",
   "action": {
     "resource": "/usr/bin/curl",
-    "operation": "execute",
+    "access_mode": "execute",
     "resource_type": "command",
     "command": "/usr/bin/curl",
     "args": ["https://example.com"],
@@ -78,7 +78,7 @@ pub trait PolicyReporter: Send + Sync {
   "event_type": "execution",
   "action": {
     "resource": "/tmp/script.sh",
-    "operation": "execute",
+    "access_mode": "execute",
     "resource_type": "file",
     "cwd": "/home/user"
   },
@@ -94,12 +94,12 @@ The event model reflects the two fundamental types of access control:
 
 - `file_access`: File read/write operations (not execution)
   - Used for: file reads, writes, redirections
-  - `action.operation`: "read" or "write"
+  - `action.access_mode`: "read" or "write"
   - `action.resource_type`: "file"
 
 - `execution`: Command spawning or file execution
   - Used for: process spawning, script execution, noexec checks
-  - `action.operation`: "execute"
+  - `action.access_mode`: "execute"
   - `action.resource_type`: "command" (process spawn) or "file" (execution check)
 
 - `network_check`: Network access check (future)
@@ -203,7 +203,7 @@ BRUSHFIRE_WEBHOOK_URL=https://example.com/policy-events
   "event_type": "execution",
   "action": {
     "resource": "/usr/bin/curl",
-    "operation": "execute",
+    "access_mode": "execute",
     "resource_type": "command",
     "args": ["https://example.com"]
   },
@@ -241,11 +241,11 @@ class PolicyEventHandler(BaseHTTPRequestHandler):
     def handle_file_access(self, event):
         """Handle file read/write operations"""
         resource = event['action']['resource']
-        operation = event['action']['operation']  # "read" or "write"
+        access_mode = event['action']['access_mode']  # "read" or "write"
         result = event['result']
 
         if result == 'denied':
-            print(f"BLOCKED: {operation} access to {resource}")
+            print(f"BLOCKED: {access_mode} access to {resource}")
             self.alert_security_team(event)
 
     def handle_execution(self, event):
