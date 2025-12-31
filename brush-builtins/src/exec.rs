@@ -72,6 +72,22 @@ impl builtins::Command for ExecCommand {
             self.empty_environment,
         )?;
 
+        // Policy check before exec (after command is composed so path is resolved)
+        #[cfg(feature = "policy")]
+        if let Some(ref policy) = context.shell.policy {
+            use std::path::Path;
+
+            // Get the resolved command path from the composed command
+            let command_path = cmd.get_program();
+            let command_path = Path::new(command_path);
+            let args_for_check: Vec<String> = self.args[1..]
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+
+            brush_core::commands::check_command_policy(policy, command_path, &args_for_check, "exec")?;
+        }
+
         let exec_error = cmd.exec();
 
         if exec_error.kind() == std::io::ErrorKind::NotFound {
