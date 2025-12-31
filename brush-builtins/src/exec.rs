@@ -85,7 +85,7 @@ impl builtins::Command for ExecCommand {
                 .map(|s| s.to_string())
                 .collect();
 
-            brush_core::commands::check_command_policy(policy, command_path, &args_for_check, "exec")?;
+            brush_core::commands::check_command_policy(policy, command_path, &args_for_check, "exec", context.shell.working_dir())?;
         }
 
         let exec_error = cmd.exec();
